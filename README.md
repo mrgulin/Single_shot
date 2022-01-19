@@ -1,2 +1,2 @@
-# Simple_shot
+# Single_shot
 Simple shot Householder transformed Hubbard model
