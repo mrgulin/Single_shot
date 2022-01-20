@@ -1,3 +1,6 @@
 Ns -> self.N
 Huckel_Hamiltonian, Huckel_H, .. -> self.h
-t_tilde -> self.t_tilde
+HH_vec -> self.v
+U0 -> self.U
+bigU -> vars['U_eff']
+Nelect -> Ne (local in some methods)
