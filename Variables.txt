@@ -1,0 +1,3 @@
+Ns -> self.N
+Huckel_Hamiltonian, Huckel_H, .. -> self.h
+t_tilde -> self.t_tilde

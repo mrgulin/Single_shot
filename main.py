@@ -1,12 +1,16 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-def print_matrix(matrix, decimal_num="+.2f", separator="  ", plot_heatmap=True, ret=False):
+OUTPUT_FORMATING_NUMBER = "+.2f"
+OUTPUT_SEPARATOR = "  "
+
+def print_matrix(matrix, plot_heatmap=True, ret=False):
     ret_string = ""
     for line in matrix:
         for cell in line:
-            ret_string += '{num:{dec}}{separator}'.format(num=cell, field_size=decimal_num, separator=separator)
-        ret_string = ret_string[:-len(separator)]
+            ret_string += '{num:{dec}}{separator}'.format(num=cell, dec=OUTPUT_FORMATING_NUMBER,
+                                                          separator=OUTPUT_SEPARATOR)
+        ret_string = ret_string[:-len(OUTPUT_SEPARATOR)]
         ret_string += "\n"
     if plot_heatmap:
         plt.imshow(obj.gamma, cmap='hot', interpolation='nearest')
@@ -14,6 +18,7 @@ def print_matrix(matrix, decimal_num="+.2f", separator="  ", plot_heatmap=True, 
     if ret:
         return ret_string
     print(ret_string, end='')
+
 
 class Householder:
     def __init__(self, particle_number: int, u: float):
@@ -29,6 +34,7 @@ class Householder:
         self.v = np.zeros((self.N), dtype=np.float64)  # Householder vector v
 
         self.procedure_log = ""
+
     def calculate_one(self, Ne):
         """
         Equivalent to DENSITY_MATRIX subroutine
@@ -66,14 +72,17 @@ class Householder:
                     self.gamma[i, j] += ei_vec[i, k] * ei_vec[j, k]
         # print_matrix(self.gamma)
 
-        mu_KS = ei_val[Ne//2]
+        mu_KS = ei_val[Ne // 2]
         # end of subroutine
         self.procedure_log += f"CALCULATIONS MADE FOR THE KS SYSTEM WITH Ns = {self.N} and Ne = {Ne}\n"
-        self.procedure_log += f"DENSITY = {n}\n THE CHEMICAL POTENTIAL (mu_KS) ASSOCIATED WITH THE NUMBER OF ELECTRONS"
-        self.procedure_log += f" = {mu_KS}\n GAMMA0 \n\n {print_matrix(self.gamma, '.3f', ',', False, True)}\n"
+        self.procedure_log += f"DENSITY = {n}\nTHE CHEMICAL POTENTIAL (mu_KS) ASSOCIATED WITH THE NUMBER OF ELECTRONS"
+        self.procedure_log += f" = {mu_KS}\n\nGAMMA0 \n{print_matrix(self.gamma, False, True)}\n"
 
         # Householder vector generation
+        self.generate_householder_vector()
 
+        # Calculate variables
+        self.calculate_variables()
 
     def calculate_many_conditions(self):
         for i in np.arange(2, self.N * 2, 4):
@@ -84,14 +93,25 @@ class Householder:
         # SHIFTED INDICES!!
         for j in range(1, self.N):
             sum_M += self.gamma[j, 0] * self.gamma[j, 0]
-        alpha = -1 * np.sign(self.gamma[1,0]) * np.sqrt(sum_M)  # in notes it is xi
+        alpha = -1 * np.sign(self.gamma[1, 0]) * np.sqrt(sum_M)  # in notes it is xi
         r = np.sqrt(0.5 * alpha * (alpha - self.gamma[1, 0]))
 
-        self.v = np.zeros((self.N, ), dtype=np.float64)  # reset array, v[0] = 0 so it is okay
-        self.v[1] = (self.gamma[1,0] - alpha)/(2. * r)
+        self.v = np.zeros((self.N,), dtype=np.float64)  # reset array, v[0] = 0 so it is okay
+        self.v[1] = (self.gamma[1, 0] - alpha) / (2. * r)
+        for i in range(2, self.N):
+            if self.gamma[i, 0] == 0:
+                self.v[i] = 0
+            else:
+                self.v[i] = self.gamma[i, 0] / (2 * r)
+        self.procedure_log += f"\nGENERATED HOUSEHOLDER VECTOR v\n"
+        self.procedure_log += f"{f'{OUTPUT_SEPARATOR}'.join(['{num:{dec}}'.format(num=i, dec=OUTPUT_FORMATING_NUMBER) for i in self.v])}\n\n"
+        print(self.v)
+
+    def calculate_variables(self):
+        pass
 
 
 if __name__ == "__main__":
     obj = Householder(16, 5)
-
-    print(obj.calculate_one(8))
+    obj.calculate_one(8)
+    print(obj.procedure_log)
