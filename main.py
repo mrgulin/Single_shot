@@ -47,6 +47,20 @@ def calculate_energy(U, U1, t_tilde, delta_v):
     energy = (4.0 / 3.0 * t_tilde) * (u - w * np.sin(theta + (np.pi / 6.0)))
     return big_u, energy
 
+def generate_huckel_hamiltonian(size, t, Ne):
+    h = np.zeros((size, size), dtype=np.float64)  # reinitialization
+
+    if (Ne / 2) % 2 == 0:
+        h[0, size - 1] = t
+        h[size - 1, 0] = t
+        print("ANTIPERIODIC")
+    else:
+        h[0, size - 1] = -t
+        h[size - 1, 0] = -t
+        print("PERIODIC")
+
+    h += np.diag(np.full((size - 1), -t), -1) + np.diag(np.full((size - 1), -t), 1)
+    return h
 
 class Householder:
     def __init__(self, particle_number: int, electron_number: int, u: float):
@@ -82,24 +96,14 @@ class Householder:
         n = float(self.Ne) / float(self.N)  # Density
 
         # Huckel hamiltonian generation: self.h in our case
-        self.h = np.zeros((self.N, self.N), dtype=np.float64)  # reinitialization
+        self.h = generate_huckel_hamiltonian(self.N, self.t, self.Ne)
 
-        if (self.Ne / 2) % 2 == 0:
-            self.h[0, self.N - 1] = self.t
-            self.h[self.N - 1, 0] = self.t
-            print("ANTIPERIODIC")
-        else:
-            self.h[0, self.N - 1] = -self.t
-            self.h[self.N - 1, 0] = -self.t
-            print("PERIODIC")
-
-        self.h += np.diag(np.full((self.N - 1), -self.t), -1) + np.diag(np.full((self.N - 1), -self.t), 1)
-
+        # Generating eigenvalues and eigenvectors
         ei_val, ei_vec = np.linalg.eig(self.h)  # v[:,i] corresponds to eigval w[i]
-        # SORTING THE EIGENVALUE!
-        idx = ei_val.argsort()[::1]
+        idx = ei_val.argsort()[::1] # Sorting matrix and vector by ascending order
         ei_val = ei_val[idx]
         ei_vec = ei_vec[:, idx]
+
         # generation of 1RDM
         self.gamma = np.zeros((self.N, self.N), dtype=np.float64)  # reset gamma
         # for Ne_cnt in range(0, Ne, 2): then we would have k goes from 0 to ...
@@ -107,9 +111,9 @@ class Householder:
             for i in range(self.N):
                 for j in range(self.N):
                     self.gamma[i, j] += ei_vec[i, k] * ei_vec[j, k]
-
         mu_ks = ei_val[(self.Ne - 1) // 2]
-        # end of subroutine
+
+        # TODO: generate better log!!! maybe generate pictures of matrices
         self.procedure_log += f"CALCULATIONS MADE FOR THE KS SYSTEM WITH Ns = {self.N} and Ne = {self.Ne}\n"
         self.procedure_log += f"DENSITY = {n}\nTHE CHEMICAL POTENTIAL (mu_KS) ASSOCIATED WITH THE NUMBER OF ELECTRONS"
         # self.procedure_log += f" = {mu_KS}\n\nGAMMA0 \n{print_matrix(self.gamma, False, True)}\n"
@@ -152,6 +156,7 @@ class Householder:
             else:
                 self.v[i] = self.gamma[i, 0] / (2 * r)
 
+        #TODO: Generate a parameter that can skip next part that could take a lot of time for large matrices
         for i in range(self.N):
             for j in range(self.N):
                 self.P[i, j] = int(i == j) - 2.0 * self.v[i] * self.v[j]
@@ -238,7 +243,8 @@ class Householder:
             else:
                 self.results_string += f"{col1[i]}\n"
                 for index, string in enumerate(("Not optimized", "optimized")):
-                    self.results_string += f"    {string:<{max_col1 - 4}} = {col2[i][index]:{OUTPUT_FORMATTING_NUMBER}}\n"
+                    self.results_string += f"    {string:<{max_col1 - 4}} = {col2[i][index]:{OUTPUT_FORMATTING_NUMBER}}"
+                    self.results_string += "\n"
         self.results_string += "*" * (max_col1 + 15) + '\n'
         if print_result:
             print(self.results_string)
@@ -282,4 +288,4 @@ if __name__ == "__main__":
     obj.calculate_one()
     print(obj.results_string)"""
     # print(obj.procedure_log)
-    calculate_many_conditions(10, 8)
+    calculate_many_conditions(100, 8)
