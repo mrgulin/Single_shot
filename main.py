@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-OUTPUT_FORMATING_NUMBER = "+.4f"
+OUTPUT_FORMATING_NUMBER = "+.6f"
 OUTPUT_SEPARATOR = "  "
 
 
@@ -27,12 +27,14 @@ def calculate_hopping(t_tilde, energy, bigu, deltav):
 
 
 def calculate_deltav_pr(t_tilde, energy, bigu, deltav):
-    denomenator = (- 4.0 * (t_tilde ** 2) + bigu ** 2.0 - deltav ** 2 - 4.0 * bigu * energy + 3.0 * (energy ** 2.0))
-    return (2.0 * deltav * energy) / denomenator
+    denominator = (- 4.0 * (t_tilde ** 2) + bigu ** 2.0 - deltav ** 2 - 4.0 * bigu * energy + 3.0 * (energy ** 2.0))
+    return (2.0 * deltav * energy) / denominator
 
 
-def calculate_d_occ(t_tilde, energy, bigu):
-    return (- 2.0 * t_tilde * t_tilde) - bigu * energy + energy ** 2 - 4.0 * bigu * energy + 3.0 * energy * energy
+def calculate_d_occ(t_tilde, energy, bigu, deltav):
+    denominator = (- 4.0 * (t_tilde ** 2) + bigu ** 2 - deltav ** 2 - 4.0 * bigu * energy + 3.0 * (energy ** 2))
+    return (- 2.0 * (t_tilde ** 2.0) - bigu * energy + energy ** 2 - deltav * energy) / denominator
+    # return (- 2.0 * t_tilde * t_tilde) - bigu * energy + energy ** 2 - 4.0 * bigu * energy + 3.0 * energy * energy
 
 
 def calculate_energy(U, U1, t_tilde, deltav):
@@ -59,6 +61,8 @@ class Householder:
         self.v = np.zeros(self.N, dtype=np.float64)  # Householder vector v
 
         self.procedure_log = ""
+        self.results_string = ''
+        self.combined_results_string = ''
 
         self.vars = {'hopping': [0, 0], 'density': [0, 0], 'd_occ': [0, 0], 'deltav': 0, 'epsilon': 0, 'mu_imp': 0,
                      't_tilde': 0, 'N_electron_cluster': 0}
@@ -96,6 +100,7 @@ class Householder:
         idx = ei_val.argsort()[::1]
         ei_val = ei_val[idx]
         ei_vec = ei_vec[:, idx]
+        print_matrix(ei_vec, False)
         # generation of 1RDM
         self.gamma = np.zeros((self.N, self.N), dtype=np.float64)  # reset gamma
         # for Ne_cnt in range(0, Ne, 2): then we would have k goes from 0 to ...
@@ -108,7 +113,8 @@ class Householder:
 
         print(ei_val)
 
-        mu_KS = ei_val[Ne // 2]
+        mu_KS = ei_val[(Ne-1) // 2]
+        print(mu_KS, Ne, Ne//2)
         # end of subroutine
         self.procedure_log += f"CALCULATIONS MADE FOR THE KS SYSTEM WITH Ns = {self.N} and Ne = {Ne}\n"
         self.procedure_log += f"DENSITY = {n}\nTHE CHEMICAL POTENTIAL (mu_KS) ASSOCIATED WITH THE NUMBER OF ELECTRONS"
@@ -133,12 +139,6 @@ class Householder:
         print(self.e_site["main"], 'asdasda')
         # : None, 'without_mu_opt': None, 'type3': None, 'type4': None}
 
-
-
-    def calculate_many_conditions(self):
-        for i in np.arange(2, self.N * 2, 4):
-            self.calculate_one(self)
-
     def generate_householder_vector(self):
         sum_M = 0
         # SHIFTED INDICES!!
@@ -148,12 +148,22 @@ class Householder:
         r = np.sqrt(0.5 * alpha * (alpha - self.gamma[1, 0]))
 
         self.v = np.zeros((self.N,), dtype=np.float64)  # reset array, v[0] = 0 so it is okay
+        self.gamma_tilde = np.zeros((self.N, self.N), dtype=np.float64)
+        self.P = np.zeros((self.N, self.N), dtype=np.float64)  # Householder transformation matrix
+
         self.v[1] = (self.gamma[1, 0] - alpha) / (2. * r)
         for i in range(2, self.N):
             if self.gamma[i, 0] == 0:
                 self.v[i] = 0
             else:
                 self.v[i] = self.gamma[i, 0] / (2 * r)
+
+        for i in range(self.N):
+            for j in range(self.N):
+                self.P[i,j] = int(i==j) - 2.0 * self.v[i] * self.v[j]
+
+        self.gamma_tilde = self.P @ self.gamma @ self.P
+
         self.procedure_log += f"\nGENERATED HOUSEHOLDER VECTOR v\n"
         self.procedure_log += f"{f'{OUTPUT_SEPARATOR}'.join(['{num:{dec}}'.format(num=i, dec=OUTPUT_FORMATING_NUMBER) for i in self.v])}\n\n"
         print(self.v)
@@ -178,7 +188,7 @@ class Householder:
 
         bigu, energy = calculate_energy(self.U, U1, t_tilde, deltav)
 
-        self.vars['d_occ'][0] = calculate_d_occ(t_tilde, energy, bigu)
+        self.vars['d_occ'][0] = calculate_d_occ(t_tilde, energy, bigu, deltav)
         self.vars['hopping'][0] = calculate_hopping(t_tilde, energy, bigu, deltav)
         deltav_pr = calculate_deltav_pr(t_tilde, energy, bigu, deltav)
         self.vars['density'][0] = 1.0 - deltav_pr
@@ -209,7 +219,7 @@ class Householder:
         self.procedure_log += f""
         bigu, energy = calculate_energy(self.U, self.vars['U1'], self.vars['t_tilde'], deltav)
 
-        self.vars['d_occ'][1] = calculate_d_occ(self.vars['t_tilde'], energy, bigu)
+        self.vars['d_occ'][1] = calculate_d_occ(self.vars['t_tilde'], energy, bigu, deltav)
         self.vars['hopping'][1] = calculate_hopping(self.vars['t_tilde'], energy, bigu, deltav)
         deltav_pr = calculate_deltav_pr(self.vars['t_tilde'], energy, bigu, deltav)
         self.vars['density'][1] = 1.0 - deltav_pr
@@ -219,6 +229,17 @@ class Householder:
         self.mu['imp'] = mu_imp
         self.vars['deltav'] = deltav
 
+    def write_report(self, Ne):
+        n = float(Ne) / float(self.N)  # Density
+        self.results_string += f"Ns {self.N}\nNe  {Ne}\n"
+        self.results_string += f"DENSITY {n}\nμ_KS  {self.mu['KS']}\n μ_imp    {self.mu['imp']}\n μ_ext   "
+        self.results_string += f"{self.mu['ext']}\n"
+        print(self.results_string)
+
+def calculate_many_conditions(particle_number, U):
+    for i in np.arange(2, particle_number * 2, 4):
+        object = Householder(particle_number, 8)
+        object.calculate_one(i)
 if __name__ == "__main__":
     obj = Householder(10, 8)
     obj.calculate_one(4)
