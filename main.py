@@ -14,7 +14,8 @@ def print_matrix(matrix, plot_heatmap=True, ret=False):
         ret_string = ret_string[:-len(OUTPUT_SEPARATOR)]
         ret_string += "\n"
     if plot_heatmap:
-        plt.imshow(obj.gamma, cmap='hot', interpolation='nearest')
+        plt.imshow(matrix, cmap='hot', interpolation='nearest')
+        plt.colorbar()
         plt.show()
     if ret:
         return ret_string
