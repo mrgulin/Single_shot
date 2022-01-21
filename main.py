@@ -119,6 +119,7 @@ class Householder:
         self.e_site["main"] = 4.0 * self.t * (1.0 - 2.0 * (self.v[1] ** 2)) * self.vars['hopping'][1] + self.U * \
                               self.vars['d_occ'][1]
         self.e_site["type3"] = - 4.0 * self.t * self.gamma[0, 1] + self.U * self.vars['d_occ'][0]
+        # Type3 is exact in the case of non-interacting electrons
         self.e_site["type4"] = self.e_site["main"] + self.U * (1.0 - n)
         self.write_report(False)
 
