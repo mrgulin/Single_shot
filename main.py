@@ -48,8 +48,9 @@ def calculate_energy(U, U1, t_tilde, deltav):
 
 
 class Householder:
-    def __init__(self, particle_number: int, u: float):
+    def __init__(self, particle_number: int, electron_number: int, u: float):
         self.N = particle_number
+        self.Ne = electron_number
 
         self.t = 1.00
         self.U = u
@@ -71,20 +72,19 @@ class Householder:
         self.mu = {'KS': 0, 'imp': 0, 'ext': 0}
         self.e_site = {"main": None, 'without_mu_opt': None, 'type3': None, 'type4': None}
 
-    def calculate_one(self, Ne):
+    def calculate_one(self):
         """
         Equivalent to DENSITY_MATRIX subroutine
-        :Ne: Number of electrons for the calculation
         """
-        if (Ne % 2) != 0 or type(Ne) != int:
+        if (self.Ne % 2) != 0 or type(self.Ne) != int:
             raise 'Problem! Number of electrons is not even!'
 
-        n = float(Ne) / float(self.N)  # Density
+        n = float(self.Ne) / float(self.N)  # Density
 
         # Huckel hamiltonian generation: self.h in our case
         self.h = np.zeros((self.N, self.N), dtype=np.float64)  # reinitialization
 
-        if (Ne / 2) % 2 == 0:
+        if (self.Ne / 2) % 2 == 0:
             self.h[0, self.N - 1] = self.t
             self.h[self.N - 1, 0] = self.t
             print("ANTIPERIODIC")
@@ -104,7 +104,7 @@ class Householder:
         # generation of 1RDM
         self.gamma = np.zeros((self.N, self.N), dtype=np.float64)  # reset gamma
         # for Ne_cnt in range(0, Ne, 2): then we would have k goes from 0 to ...
-        for k in range(int(Ne / 2)):  # go through all orbitals that are occupied!
+        for k in range(int(self.Ne / 2)):  # go through all orbitals that are occupied!
             for i in range(self.N):
                 for j in range(self.N):
                     self.gamma[i, j] += ei_vec[i, k] * ei_vec[j, k]
@@ -113,10 +113,10 @@ class Householder:
 
         print(ei_val)
 
-        mu_KS = ei_val[(Ne-1) // 2]
-        print(mu_KS, Ne, Ne//2)
+        mu_KS = ei_val[(self.Ne - 1) // 2]
+        print(mu_KS, self.Ne, self.Ne // 2)
         # end of subroutine
-        self.procedure_log += f"CALCULATIONS MADE FOR THE KS SYSTEM WITH Ns = {self.N} and Ne = {Ne}\n"
+        self.procedure_log += f"CALCULATIONS MADE FOR THE KS SYSTEM WITH Ns = {self.N} and Ne = {self.Ne}\n"
         self.procedure_log += f"DENSITY = {n}\nTHE CHEMICAL POTENTIAL (mu_KS) ASSOCIATED WITH THE NUMBER OF ELECTRONS"
         self.procedure_log += f" = {mu_KS}\n\nGAMMA0 \n{print_matrix(self.gamma, False, True)}\n"
         self.mu['KS'] = mu_KS
@@ -128,13 +128,15 @@ class Householder:
         self.calculate_variables()
 
         # do a minimization
-        self.lieb_minimization(Ne)
+        self.lieb_minimization()
 
         self.mu['ext'] = self.mu['KS'] + self.mu["imp"]
-        self.e_site["without_mu_opt"] = 4.0 * self.t * (1.0 - 2.0 * (self.v[1] ** 2)) * self.vars['hopping'][0] + self.U * \
-                              self.vars['d_occ'][0]
-        self.e_site["main"] = 4.0 * self.t * (1.0 - 2.0 * (self.v[1] ** 2)) * self.vars['hopping'][1] + self.U * self.vars['d_occ'][1]
-        self.e_site["type3"] = - 4.0 * self.t * self.gamma[0,1] + self.U * self.vars['d_occ'][0]
+        self.e_site["without_mu_opt"] = 4.0 * self.t * (1.0 - 2.0 * (self.v[1] ** 2)) * self.vars['hopping'][
+            0] + self.U * \
+                                        self.vars['d_occ'][0]
+        self.e_site["main"] = 4.0 * self.t * (1.0 - 2.0 * (self.v[1] ** 2)) * self.vars['hopping'][1] + self.U * \
+                              self.vars['d_occ'][1]
+        self.e_site["type3"] = - 4.0 * self.t * self.gamma[0, 1] + self.U * self.vars['d_occ'][0]
         self.e_site["type4"] = self.e_site["main"] + self.U * (1.0 - n)
         print(self.e_site["main"], 'asdasda')
         # : None, 'without_mu_opt': None, 'type3': None, 'type4': None}
@@ -160,7 +162,7 @@ class Householder:
 
         for i in range(self.N):
             for j in range(self.N):
-                self.P[i,j] = int(i==j) - 2.0 * self.v[i] * self.v[j]
+                self.P[i, j] = int(i == j) - 2.0 * self.v[i] * self.v[j]
 
         self.gamma_tilde = self.P @ self.gamma @ self.P
 
@@ -200,9 +202,9 @@ class Householder:
         self.vars['t_tilde'] = t_tilde
         self.vars['N_electron_cluster'] = self.vars['density'][0] * self.N
 
-    def lieb_minimization(self, Ne):
+    def lieb_minimization(self, ):
         n = [0, 0]
-        n[0] = Ne / self.N
+        n[0] = self.Ne / self.N
         deltav = None
         energy_lieb = -1000
         for k in range(-3000, 3001):
@@ -223,24 +225,42 @@ class Householder:
         self.vars['hopping'][1] = calculate_hopping(self.vars['t_tilde'], energy, bigu, deltav)
         deltav_pr = calculate_deltav_pr(self.vars['t_tilde'], energy, bigu, deltav)
         self.vars['density'][1] = 1.0 - deltav_pr
+        self.vars["KE"] = 2.0 * self.vars['t_tilde'] * self.vars['hopping'][1]
 
         mu_imp = - self.vars['epsilon'] - 0.5 * (self.vars['U1'] - self.U) + deltav
         self.vars['mu_imp'] = mu_imp
         self.mu['imp'] = mu_imp
         self.vars['deltav'] = deltav
 
-    def write_report(self, Ne):
-        n = float(Ne) / float(self.N)  # Density
-        self.results_string += f"Ns {self.N}\nNe  {Ne}\n"
-        self.results_string += f"DENSITY {n}\nμ_KS  {self.mu['KS']}\n μ_imp    {self.mu['imp']}\n μ_ext   "
-        self.results_string += f"{self.mu['ext']}\n"
+    def write_report(self):
+        n = float(self.Ne) / float(self.N)  # Density
+        col1 = ['Ns', 'Ne', 'Density', 'μ_KS', 'μ_imp', 'μ_ext', 'Impurity occupation not optimized',
+                'Impurity occupation optimized', 'gamma_01 from Hamiltonian not optimized',
+                'gamma_01 from Hamiltonian optimized', 'KE', 'D_occ from Hamiltonian not optimized',
+                'D_occ from Hamiltonian optimized', 't_tilde', 'epsilon']
+        col2 = [self.N, self.Ne, n, self.mu['KS'], self.mu['imp'], self.mu['ext']] + self.vars['density'] + \
+               self.vars['hopping'] + [self.vars["KE"]] + self.vars['d_occ'] + [self.vars["t_tilde"],
+                                                                                self.vars["epsilon"]]
+        max_col1 = max([len(i) for i in col1])
+        for i in range(len(col1)):
+            self.results_string += f"{col1[i]:<{max_col1}} = {col2[i]:{OUTPUT_FORMATING_NUMBER}}\n"
+        self.results_string += "*" * (max_col1 + 15) + '\n'
+
+        '''self.results_string += f"Ns {self.N}\nNe  {self.Ne}\n"
+        self.results_string += f"DENSITY {n}\nμ_KS  {self.mu['KS']}\nμ_imp    {self.mu['imp']}\nμ_ext   "
+        self.results_string += f"{self.mu['ext']}"
+        self.results_string += f"\nImpurity occupation not optimized {self.vars['density'][0]:{OUTPUT_FORMATING_NUMBER}}"'''
         print(self.results_string)
+
 
 def calculate_many_conditions(particle_number, U):
     for i in np.arange(2, particle_number * 2, 4):
-        object = Householder(particle_number, 8)
-        object.calculate_one(i)
+        object = Householder(particle_number, i, U)
+        object.calculate_one()
+
+
 if __name__ == "__main__":
-    obj = Householder(10, 8)
-    obj.calculate_one(4)
-    print(obj.procedure_log)
+    obj = Householder(10, 4, 8)
+    obj.calculate_one()
+    obj.write_report()
+    # print(obj.procedure_log)
