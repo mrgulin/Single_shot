@@ -66,11 +66,11 @@ class Householder:
         self.results_string = ''
         self.combined_results_string = {'col_names': '', 'row': ''}
 
-        self.vars = {'hopping': [0, 0], 'density': [0, 0], 'd_occ': [0, 0], 'delta_v': 0, 'epsilon': 0, 'mu_imp': 0,
-                     't_tilde': 0, 'N_electron_cluster': 0}
+        self.vars = {'hopping': [0.0, 0.0], 'density': [0.0, 0.0], 'd_occ': [0.0, 0.0], 'delta_v': 0.0, 'epsilon': 0.0,
+                     'mu_imp': 0.0, 't_tilde': 0.0, 'N_electron_cluster': 0.0}
 
-        self.mu = {'KS': 0, 'imp': 0, 'ext': 0}
-        self.e_site = {"main": 0, 'without_mu_opt': 0, 'type3': 0, 'type4': 0}
+        self.mu = {'KS': 0.0, 'imp': 0.0, 'ext': 0.0}
+        self.e_site = {"main": 0.0, 'without_mu_opt': 0.0, 'type3': 0.0, 'type4': 0.0}
 
     def calculate_one(self):
         """
@@ -108,12 +108,12 @@ class Householder:
                 for j in range(self.N):
                     self.gamma[i, j] += ei_vec[i, k] * ei_vec[j, k]
 
-        mu_KS = ei_val[(self.Ne - 1) // 2]
+        mu_ks = ei_val[(self.Ne - 1) // 2]
         # end of subroutine
         self.procedure_log += f"CALCULATIONS MADE FOR THE KS SYSTEM WITH Ns = {self.N} and Ne = {self.Ne}\n"
         self.procedure_log += f"DENSITY = {n}\nTHE CHEMICAL POTENTIAL (mu_KS) ASSOCIATED WITH THE NUMBER OF ELECTRONS"
         # self.procedure_log += f" = {mu_KS}\n\nGAMMA0 \n{print_matrix(self.gamma, False, True)}\n"
-        self.mu['KS'] = mu_KS
+        self.mu['KS'] = mu_ks
 
         # Householder vector generation
         self.generate_householder_vector()
@@ -134,11 +134,11 @@ class Householder:
         self.write_report(False)
 
     def generate_householder_vector(self):
-        sum_M = 0
+        sum_m = 0
         # SHIFTED INDICES!!
         for j in range(1, self.N):
-            sum_M += self.gamma[j, 0] * self.gamma[j, 0]
-        alpha = -1 * np.sign(self.gamma[1, 0]) * np.sqrt(sum_M)  # in notes it is xi
+            sum_m += self.gamma[j, 0] * self.gamma[j, 0]
+        alpha = -1 * np.sign(self.gamma[1, 0]) * np.sqrt(sum_m)  # in notes it is xi
         r = np.sqrt(0.5 * alpha * (alpha - self.gamma[1, 0]))
 
         self.v = np.zeros((self.N,), dtype=np.float64)  # reset array, v[0] = 0 so it is okay
@@ -240,14 +240,16 @@ class Householder:
                 for index, string in enumerate(("Not optimized", "optimized")):
                     self.results_string += f"    {string:<{max_col1 - 4}} = {col2[i][index]:{OUTPUT_FORMATTING_NUMBER}}\n"
         self.results_string += "*" * (max_col1 + 15) + '\n'
-        if print_result: print(self.results_string)
+        if print_result:
+            print(self.results_string)
 
         # combined_result_string
         columns = ['n', 'e_n(1)', 'e_n(2)', 'e_n(3)', 'e_n(4)', 't_tilde', 'hopp1', 'hopp2', 'epsil', 'Ec', 'd_occ1',
                    'd_occ2', 'U0/t_tilde', 'Occ_cluster', 'dsty1', 'dsty2', 'mu_KS', 'mu_imp', 'mu_ext']
         values = [n, self.e_site['without_mu_opt'], self.e_site['main'], self.e_site['type3'], self.e_site['type4'],
                   self.vars['t_tilde']] + self.vars['hopping'] + [self.vars['epsilon'], self.vars['KE']] + \
-                 self.vars['d_occ'] + [self.U / self.vars['t_tilde'], self.gamma_tilde[0, 0] + self.gamma_tilde[1, 1]] + \
+                 self.vars['d_occ'] + [self.U / self.vars['t_tilde'], self.gamma_tilde[0, 0] +
+                                       self.gamma_tilde[1, 1]] + \
                  self.vars['density'] + [self.mu['KS'], self.mu['imp'], self.mu['ext']]
         val_str = ''.join([f'{num:{OUTPUT_FORMATTING_NUMBER}}' for num in values])
         self.combined_results_string['row'] = val_str + '\n'
@@ -261,12 +263,12 @@ def calculate_many_conditions(particle_number, U):
     data_string = ''
     result_string = ''
     for i in np.arange(2, particle_number * 2, 4):
-        object = Householder(particle_number, i, U)
-        object.calculate_one()
+        obj = Householder(particle_number, i, U)
+        obj.calculate_one()
         if result_string == '':
-            result_string = object.combined_results_string['col_names']
-        result_string += object.combined_results_string['row']
-        data_string += object.results_string
+            result_string = obj.combined_results_string['col_names']
+        result_string += obj.combined_results_string['row']
+        data_string += obj.results_string
     data_file = open(f"Single_loop-data-U_{U:.0f}-n.txt", 'w', encoding='UTF-8')
     data_file.write(data_string)
     data_file.close()
