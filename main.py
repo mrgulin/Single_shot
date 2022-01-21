@@ -1,6 +1,5 @@
 import numpy as np
 import matplotlib.pyplot as plt
-
 OUTPUT_FORMATTING_NUMBER = "+12.6f"
 OUTPUT_SEPARATOR = "  "
 
@@ -44,20 +43,6 @@ def calculate_energy(U, U1, t_tilde, delta_v):
     energy = (4.0 / 3.0 * t_tilde) * (u - w * np.sin(theta + (np.pi / 6.0)))
     return big_u, energy
 
-def generate_huckel_hamiltonian(size, t, Ne):
-    h = np.zeros((size, size), dtype=np.float64)  # reinitialization
-
-    if (Ne / 2) % 2 == 0:
-        h[0, size - 1] = t
-        h[size - 1, 0] = t
-        self.procedure_log += "ANTIPERIODIC" + '\n'
-    else:
-        h[0, size - 1] = -t
-        h[size - 1, 0] = -t
-        self.procedure_log += "PERIODIC" + '\n'
-
-    h += np.diag(np.full((size - 1), -t), -1) + np.diag(np.full((size - 1), -t), 1)
-    return h
 
 class Householder:
     def __init__(self, particle_number: int, electron_number: int, u: float, debug=False, skip_gamma_tilde=False):
@@ -98,7 +83,7 @@ class Householder:
         print(f'calculation with Ns={self.N}, Ne={self.Ne}, density={n}')
 
         # Huckel hamiltonian generation: self.h in our case
-        self.h = generate_huckel_hamiltonian(self.N, self.t, self.Ne)
+        self.h = self.generate_huckel_hamiltonian()
 
         # Generating eigenvalues and eigenvectors
         ei_val, ei_vec = np.linalg.eig(self.h)  # v[:,i] corresponds to eigval w[i]
@@ -149,6 +134,20 @@ class Householder:
             data_file.write(self.procedure_log)
             data_file.close()
 
+    def generate_huckel_hamiltonian(self):
+        h = np.zeros((self.N, self.N), dtype=np.float64)  # reinitialization
+        t = self.t
+        if (self.Ne / 2) % 2 == 0:
+            h[0, self.N - 1] = t
+            h[self.N - 1, 0] = t
+            self.procedure_log += "ANTIPERIODIC" + '\n'
+        else:
+            h[0, self.N - 1] = -t
+            h[self.N - 1, 0] = -t
+            self.procedure_log += "PERIODIC" + '\n'
+
+        h += np.diag(np.full((self.N - 1), -t), -1) + np.diag(np.full((self.N - 1), -t), 1)
+        return h
 
     def generate_householder_vector(self):
         sum_m = 0
@@ -302,5 +301,5 @@ if __name__ == "__main__":
     # print(obj.procedure_log)
     # calculate_many_conditions(100, 8)
     # calculate_many_conditions(10, 8)
-    obj = Householder(10, 8, 8, debug=True)
+    obj = Householder(10, 18, 8, debug=True)
     obj.calculate_one()
