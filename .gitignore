@@ -127,3 +127,9 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+
+# Results from calculations
+**/*Single_loop*
+**/*Procedure_log*
+!**/
