@@ -232,25 +232,23 @@ class Householder:
         self.mu['imp'] = mu_imp
         self.vars['deltav'] = deltav
 
-    def write_report(self):
+    def write_report(self, print_result=True):
         n = float(self.Ne) / float(self.N)  # Density
-        col1 = ['Ns', 'Ne', 'Density', 'μ_KS', 'μ_imp', 'μ_ext', 'Impurity occupation not optimized',
-                'Impurity occupation optimized', 'gamma_01 from Hamiltonian not optimized',
-                'gamma_01 from Hamiltonian optimized', 'KE', 'D_occ from Hamiltonian not optimized',
-                'D_occ from Hamiltonian optimized', 't_tilde', 'epsilon']
-        col2 = [self.N, self.Ne, n, self.mu['KS'], self.mu['imp'], self.mu['ext']] + self.vars['density'] + \
-               self.vars['hopping'] + [self.vars["KE"]] + self.vars['d_occ'] + [self.vars["t_tilde"],
-                                                                                self.vars["epsilon"]]
-        max_col1 = max([len(i) for i in col1])
+        col1 = ['Ns', 'Ne', 'Density', 'μ_KS', 'μ_imp', 'μ_ext', 'Impurity occupation',
+                'gamma_01 from Hamiltonian', 'KE', 'D_occ from Hamiltonian', 't_tilde', 'epsilon']
+        col2 = [self.N, self.Ne, n, self.mu['KS'], self.mu['imp'], self.mu['ext'], self.vars['density'],
+                self.vars['hopping'], self.vars["KE"], self.vars['d_occ'], self.vars["t_tilde"],
+                self.vars["epsilon"]]
+        max_col1 = 20
         for i in range(len(col1)):
-            self.results_string += f"{col1[i]:<{max_col1}} = {col2[i]:{OUTPUT_FORMATING_NUMBER}}\n"
+            if type(col2[i])!=list:
+                self.results_string  += f"{col1[i]:<{max_col1}} = {col2[i]:{OUTPUT_FORMATING_NUMBER}}\n"
+            else:
+                self.results_string += f"{col1[i]}\n"
+                for index, string in enumerate(("Not optimized", "optimized")):
+                    self.results_string += f"    {string:<{max_col1-4}} = {col2[i][index]:{OUTPUT_FORMATING_NUMBER}}\n"
         self.results_string += "*" * (max_col1 + 15) + '\n'
-
-        '''self.results_string += f"Ns {self.N}\nNe  {self.Ne}\n"
-        self.results_string += f"DENSITY {n}\nμ_KS  {self.mu['KS']}\nμ_imp    {self.mu['imp']}\nμ_ext   "
-        self.results_string += f"{self.mu['ext']}"
-        self.results_string += f"\nImpurity occupation not optimized {self.vars['density'][0]:{OUTPUT_FORMATING_NUMBER}}"'''
-        print(self.results_string)
+        if print_result: print(self.results_string)
 
 
 def calculate_many_conditions(particle_number, U):
