@@ -8,11 +8,8 @@ OUTPUT_SEPARATOR = "  "
 def print_matrix(matrix, plot_heatmap=True, ret=False):
     ret_string = ""
     for line in matrix:
-        for cell in line:
-            ret_string += '{num:{dec}}{separator}'.format(num=cell, dec=OUTPUT_FORMATTING_NUMBER,
-                                                          separator=OUTPUT_SEPARATOR)
-        ret_string = ret_string[:-len(OUTPUT_SEPARATOR)]
-        ret_string += "\n"
+        l1 = ['{num:{dec}}'.format(num=cell, dec=OUTPUT_FORMATTING_NUMBER) for cell in line]
+        ret_string += f'{OUTPUT_SEPARATOR}'.join(l1) + "\n"
     if plot_heatmap:
         plt.imshow(matrix, cmap='hot', interpolation='nearest')
         plt.colorbar()
@@ -53,17 +50,17 @@ def generate_huckel_hamiltonian(size, t, Ne):
     if (Ne / 2) % 2 == 0:
         h[0, size - 1] = t
         h[size - 1, 0] = t
-        print("ANTIPERIODIC")
+        self.procedure_log += "ANTIPERIODIC" + '\n'
     else:
         h[0, size - 1] = -t
         h[size - 1, 0] = -t
-        print("PERIODIC")
+        self.procedure_log += "PERIODIC" + '\n'
 
     h += np.diag(np.full((size - 1), -t), -1) + np.diag(np.full((size - 1), -t), 1)
     return h
 
 class Householder:
-    def __init__(self, particle_number: int, electron_number: int, u: float):
+    def __init__(self, particle_number: int, electron_number: int, u: float, debug=False, skip_gamma_tilde=False):
         self.N = particle_number
         self.Ne = electron_number
 
@@ -86,6 +83,9 @@ class Householder:
         self.mu = {'KS': 0.0, 'imp': 0.0, 'ext': 0.0}
         self.e_site = {"main": 0.0, 'without_mu_opt': 0.0, 'type3': 0.0, 'type4': 0.0}
 
+        self.skip_gamma_tilde = skip_gamma_tilde
+        self.debug = debug
+
     def calculate_one(self):
         """
         Equivalent to DENSITY_MATRIX subroutine
@@ -94,6 +94,8 @@ class Householder:
             raise 'Problem! Number of electrons is not even!'
 
         n = float(self.Ne) / float(self.N)  # Density
+
+        print(f'calculation with Ns={self.N}, Ne={self.Ne}, density={n}')
 
         # Huckel hamiltonian generation: self.h in our case
         self.h = generate_huckel_hamiltonian(self.N, self.t, self.Ne)
@@ -113,9 +115,7 @@ class Householder:
                     self.gamma[i, j] += ei_vec[i, k] * ei_vec[j, k]
         mu_ks = ei_val[(self.Ne - 1) // 2]
 
-        # TODO: generate better log!!! maybe generate pictures of matrices
-        self.procedure_log += f"CALCULATIONS MADE FOR THE KS SYSTEM WITH Ns = {self.N} and Ne = {self.Ne}\n"
-        self.procedure_log += f"DENSITY = {n}\nTHE CHEMICAL POTENTIAL (mu_KS) ASSOCIATED WITH THE NUMBER OF ELECTRONS"
+       # TODO: maybe generate pictures of matrices
         # self.procedure_log += f" = {mu_KS}\n\nGAMMA0 \n{print_matrix(self.gamma, False, True)}\n"
         self.mu['KS'] = mu_ks
 
@@ -137,6 +137,19 @@ class Householder:
         self.e_site["type4"] = self.e_site["main"] + self.U * (1.0 - n)
         self.write_report(False)
 
+        if self.debug:
+            self.procedure_log += f"CALCULATIONS MADE FOR THE KS SYSTEM WITH Ns = {self.N} and Ne = {self.Ne} ==>"
+            self.procedure_log += f"DENSITY = {n}\n\n"
+            self.procedure_log += "Huckel_hamiltonian\n" + print_matrix(self.h, False, True) + '\n\n'
+            self.procedure_log += "Eigenvectors\n" + print_matrix(ei_vec, False, True) + '\n\n'
+            self.procedure_log += "Eigenvalues\n" + "".join([f"{i:{OUTPUT_FORMATTING_NUMBER}}" for i in ei_val]) + '\n'
+            self.procedure_log += "Gamma_0\n" + print_matrix(self.gamma, False, True) + '\n\n'
+            self.procedure_log += "HH_vec\n" + "".join([f"{i:{OUTPUT_FORMATTING_NUMBER}}" for i in self.v]) + '\n'
+            data_file = open(f"Procedure_log-U-{self.U:.0f}_N-{self.N}.txt", 'w', encoding='UTF-8')
+            data_file.write(self.procedure_log)
+            data_file.close()
+
+
     def generate_householder_vector(self):
         sum_m = 0
         # SHIFTED INDICES!!
@@ -156,14 +169,13 @@ class Householder:
             else:
                 self.v[i] = self.gamma[i, 0] / (2 * r)
 
-        #TODO: Generate a parameter that can skip next part that could take a lot of time for large matrices
-        for i in range(self.N):
-            for j in range(self.N):
-                self.P[i, j] = int(i == j) - 2.0 * self.v[i] * self.v[j]
+        if not self.skip_gamma_tilde:
+            for i in range(self.N):
+                for j in range(self.N):
+                    self.P[i, j] = int(i == j) - 2.0 * self.v[i] * self.v[j]
 
-        self.gamma_tilde = self.P @ self.gamma @ self.P
+            self.gamma_tilde = self.P @ self.gamma @ self.P
 
-        self.procedure_log += f"\nGENERATED HOUSEHOLDER VECTOR v\n"
         l1 = ['{num:{dec}}'.format(num=i, dec=OUTPUT_FORMATTING_NUMBER) for i in self.v]
         self.procedure_log += f"{f'{OUTPUT_SEPARATOR}'.join(l1)}\n\n"
 
@@ -288,4 +300,7 @@ if __name__ == "__main__":
     obj.calculate_one()
     print(obj.results_string)"""
     # print(obj.procedure_log)
-    calculate_many_conditions(100, 8)
+    # calculate_many_conditions(100, 8)
+    # calculate_many_conditions(10, 8)
+    obj = Householder(10, 8, 8, debug=True)
+    obj.calculate_one()
