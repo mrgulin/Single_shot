@@ -22,30 +22,30 @@ def print_matrix(matrix, plot_heatmap=True, ret=False):
     print(ret_string, end='')
 
 
-def calculate_hopping(t_tilde, energy, bigu, deltav):
-    up = (-1.0 / 4.0) * (8.0 * t_tilde * (energy - bigu))
-    return up / (- 4.0 * (t_tilde ** 2) + bigu ** 2 - deltav ** 2 - 4.0 * bigu * energy + 3.0 * (energy ** 2))
+def calculate_hopping(t_tilde, energy, big_u, delta_v):
+    up = (-1.0 / 4.0) * (8.0 * t_tilde * (energy - big_u))
+    return up / (- 4.0 * (t_tilde ** 2) + big_u ** 2 - delta_v ** 2 - 4.0 * big_u * energy + 3.0 * (energy ** 2))
 
 
-def calculate_deltav_pr(t_tilde, energy, bigu, deltav):
-    denominator = (- 4.0 * (t_tilde ** 2) + bigu ** 2.0 - deltav ** 2 - 4.0 * bigu * energy + 3.0 * (energy ** 2.0))
-    return (2.0 * deltav * energy) / denominator
+def calculate_delta_v_pr(t_tilde, energy, big_u, delta_v):
+    denominator = (- 4.0 * (t_tilde ** 2) + big_u ** 2.0 - delta_v ** 2 - 4.0 * big_u * energy + 3.0 * (energy ** 2.0))
+    return (2.0 * delta_v * energy) / denominator
 
 
-def calculate_d_occ(t_tilde, energy, bigu, deltav):
-    denominator = (- 4.0 * (t_tilde ** 2) + bigu ** 2 - deltav ** 2 - 4.0 * bigu * energy + 3.0 * (energy ** 2))
-    return (- 2.0 * (t_tilde ** 2.0) - bigu * energy + energy ** 2 - deltav * energy) / denominator
-    # return (- 2.0 * t_tilde * t_tilde) - bigu * energy + energy ** 2 - 4.0 * bigu * energy + 3.0 * energy * energy
+def calculate_d_occ(t_tilde, energy, big_u, delta_v):
+    denominator = (- 4.0 * (t_tilde ** 2) + big_u ** 2 - delta_v ** 2 - 4.0 * big_u * energy + 3.0 * (energy ** 2))
+    return (- 2.0 * (t_tilde ** 2.0) - big_u * energy + energy ** 2 - delta_v * energy) / denominator
+    # return (- 2.0 * t_tilde * t_tilde) - big_u * energy + energy ** 2 - 4.0 * big_u * energy + 3.0 * energy * energy
 
 
-def calculate_energy(U, U1, t_tilde, deltav):
-    bigu = 0.5 * (U1 + U)
-    u = bigu / (2 * t_tilde)
-    nu = deltav / (2 * t_tilde)
+def calculate_energy(U, U1, t_tilde, delta_v):
+    big_u = 0.5 * (U1 + U)
+    u = big_u / (2 * t_tilde)
+    nu = delta_v / (2 * t_tilde)
     w = np.sqrt(3 * (1 + nu * nu) + u * u)
     theta = (1.0 / 3.0) * np.arccos((9 * (nu * nu - 0.5) - u * u) * (u / (w * w * w)))
     energy = (4.0 / 3.0 * t_tilde) * (u - w * np.sin(theta + (np.pi / 6.0)))
-    return bigu, energy
+    return big_u, energy
 
 
 class Householder:
@@ -66,11 +66,11 @@ class Householder:
         self.results_string = ''
         self.combined_results_string = {'col_names': '', 'row': ''}
 
-        self.vars = {'hopping': [0, 0], 'density': [0, 0], 'd_occ': [0, 0], 'deltav': 0, 'epsilon': 0, 'mu_imp': 0,
+        self.vars = {'hopping': [0, 0], 'density': [0, 0], 'd_occ': [0, 0], 'delta_v': 0, 'epsilon': 0, 'mu_imp': 0,
                      't_tilde': 0, 'N_electron_cluster': 0}
 
         self.mu = {'KS': 0, 'imp': 0, 'ext': 0}
-        self.e_site = {"main": None, 'without_mu_opt': None, 'type3': None, 'type4': None}
+        self.e_site = {"main": 0, 'without_mu_opt': 0, 'type3': 0, 'type4': 0}
 
     def calculate_one(self):
         """
@@ -125,9 +125,8 @@ class Householder:
         self.lieb_minimization()
 
         self.mu['ext'] = self.mu['KS'] + self.mu["imp"]
-        self.e_site["without_mu_opt"] = 4.0 * self.t * (1.0 - 2.0 * (self.v[1] ** 2)) * self.vars['hopping'][
-            0] + self.U * \
-                                        self.vars['d_occ'][0]
+        self.e_site["without_mu_opt"] = 4.0 * self.t * (1.0 - 2.0 * (self.v[1] ** 2)) * self.vars['hopping'][0] + \
+                                        self.U * self.vars['d_occ'][0]
         self.e_site["main"] = 4.0 * self.t * (1.0 - 2.0 * (self.v[1] ** 2)) * self.vars['hopping'][1] + self.U * \
                               self.vars['d_occ'][1]
         self.e_site["type3"] = - 4.0 * self.t * self.gamma[0, 1] + self.U * self.vars['d_occ'][0]
@@ -160,35 +159,36 @@ class Householder:
         self.gamma_tilde = self.P @ self.gamma @ self.P
 
         self.procedure_log += f"\nGENERATED HOUSEHOLDER VECTOR v\n"
-        self.procedure_log += f"{f'{OUTPUT_SEPARATOR}'.join(['{num:{dec}}'.format(num=i, dec=OUTPUT_FORMATTING_NUMBER) for i in self.v])}\n\n"
+        l1 = ['{num:{dec}}'.format(num=i, dec=OUTPUT_FORMATTING_NUMBER) for i in self.v]
+        self.procedure_log += f"{f'{OUTPUT_SEPARATOR}'.join(l1)}\n\n"
 
     def calculate_variables(self):
-        self.vars = {'hopping': [0, 0], 'density': [0, 0], 'd_occ': [0, 0], 'deltav': 0, 'epsilon': 0, 'mu_imp': 0,
+        self.vars = {'hopping': [0, 0], 'density': [0, 0], 'd_occ': [0, 0], 'delta_v': 0, 'epsilon': 0, 'mu_imp': 0,
                      't_tilde': 0, 'N_electron_cluster': 0}
         N = self.N  # just for shorter code
         t_tilde = self.t + 2 * self.v[1] * (self.v[1] * self.h[0, 1] + self.v[N - 1] * self.h[0, N - 1])
         t_tilde = - t_tilde
         U1 = 0
-        epsil = [0, 0, 0]
+        epsilon_vector = [0, 0, 0]
         for i in range(self.N):
             for j in range(self.N):
-                epsil[0] += self.h[i, j] * self.v[i] * self.v[j]
-            epsil[1] += self.v[i] * self.h[1, i]
-        epsil[2] = 4 * self.v[1] * (self.v[1] * epsil[0] - epsil[1])
-        epsilon = epsil[2]
+                epsilon_vector[0] += self.h[i, j] * self.v[i] * self.v[j]
+            epsilon_vector[1] += self.v[i] * self.h[1, i]
+        epsilon_vector[2] = 4 * self.v[1] * (self.v[1] * epsilon_vector[0] - epsilon_vector[1])
+        epsilon = epsilon_vector[2]
 
-        deltav = epsilon + 0.5 * (U1 - self.U)
+        delta_v = epsilon + 0.5 * (U1 - self.U)
 
-        bigu, energy = calculate_energy(self.U, U1, t_tilde, deltav)
+        big_u, energy = calculate_energy(self.U, U1, t_tilde, delta_v)
 
-        self.vars['d_occ'][0] = calculate_d_occ(t_tilde, energy, bigu, deltav)
-        self.vars['hopping'][0] = calculate_hopping(t_tilde, energy, bigu, deltav)
-        deltav_pr = calculate_deltav_pr(t_tilde, energy, bigu, deltav)
-        self.vars['density'][0] = 1.0 - deltav_pr
+        self.vars['d_occ'][0] = calculate_d_occ(t_tilde, energy, big_u, delta_v)
+        self.vars['hopping'][0] = calculate_hopping(t_tilde, energy, big_u, delta_v)
+        delta_v_pr = calculate_delta_v_pr(t_tilde, energy, big_u, delta_v)
+        self.vars['density'][0] = 1.0 - delta_v_pr
 
-        self.vars['deltav'] = deltav
+        self.vars['delta_v'] = delta_v
         self.vars['epsilon'] = epsilon
-        self.vars['epsil_v'] = epsil
+        self.vars['epsil_v'] = epsilon_vector
         self.vars['U1'] = U1
         self.vars['t_tilde'] = t_tilde
         self.vars['N_electron_cluster'] = self.vars['density'][0] * self.N
@@ -196,32 +196,32 @@ class Householder:
     def lieb_minimization(self, ):
         n = [0, 0]
         n[0] = self.Ne / self.N
-        deltav = None
+        delta_v = None
         energy_lieb = -1000
         for k in range(-3000, 3001):
-            deltav_lieb = k / 200
+            delta_v_lieb = k / 200
             if self.vars['t_tilde'] == 0:
                 print("Looks like you are trying to do minimization before variable calculation!")
-            bigu, energy = calculate_energy(self.U, self.vars['U1'], self.vars['t_tilde'], deltav_lieb)
-            energy_lieb_current = energy + deltav_lieb * (n[0] - 1.0)
+            big_u, energy = calculate_energy(self.U, self.vars['U1'], self.vars['t_tilde'], delta_v_lieb)
+            energy_lieb_current = energy + delta_v_lieb * (n[0] - 1.0)
 
             if energy_lieb_current > energy_lieb:
                 energy_lieb = energy_lieb_current
-                deltav = deltav_lieb
+                delta_v = delta_v_lieb
                 n[1] = n[0]
         self.procedure_log += f""
-        bigu, energy = calculate_energy(self.U, self.vars['U1'], self.vars['t_tilde'], deltav)
+        big_u, energy = calculate_energy(self.U, self.vars['U1'], self.vars['t_tilde'], delta_v)
 
-        self.vars['d_occ'][1] = calculate_d_occ(self.vars['t_tilde'], energy, bigu, deltav)
-        self.vars['hopping'][1] = calculate_hopping(self.vars['t_tilde'], energy, bigu, deltav)
-        deltav_pr = calculate_deltav_pr(self.vars['t_tilde'], energy, bigu, deltav)
-        self.vars['density'][1] = 1.0 - deltav_pr
+        self.vars['d_occ'][1] = calculate_d_occ(self.vars['t_tilde'], energy, big_u, delta_v)
+        self.vars['hopping'][1] = calculate_hopping(self.vars['t_tilde'], energy, big_u, delta_v)
+        delta_v_pr = calculate_delta_v_pr(self.vars['t_tilde'], energy, big_u, delta_v)
+        self.vars['density'][1] = 1.0 - delta_v_pr
         self.vars["KE"] = 2.0 * self.vars['t_tilde'] * self.vars['hopping'][1]
 
-        mu_imp = - self.vars['epsilon'] - 0.5 * (self.vars['U1'] - self.U) + deltav
+        mu_imp = - self.vars['epsilon'] - 0.5 * (self.vars['U1'] - self.U) + delta_v
         self.vars['mu_imp'] = mu_imp
         self.mu['imp'] = mu_imp
-        self.vars['deltav'] = deltav
+        self.vars['delta_v'] = delta_v
 
     def write_report(self, print_result=True):
         # Result_string part
@@ -251,10 +251,10 @@ class Householder:
                  self.vars['density'] + [self.mu['KS'], self.mu['imp'], self.mu['ext']]
         val_str = ''.join([f'{num:{OUTPUT_FORMATTING_NUMBER}}' for num in values])
         self.combined_results_string['row'] = val_str + '\n'
-        self.combined_results_string['col_names'] = "".join([f'{i:>{int(len(val_str)/len(columns))}}' for i in columns])
+        self.combined_results_string['col_names'] = "".join(
+            [f'{i:>{int(len(val_str) / len(columns))}}' for i in columns])
         self.combined_results_string['col_names'] += '\n'
         # I put col names and row data into combined_results_string. I used such formatting that columns are aligned
-
 
 
 def calculate_many_conditions(particle_number, U):
