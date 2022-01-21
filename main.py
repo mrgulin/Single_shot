@@ -99,7 +99,6 @@ class Householder:
         idx = ei_val.argsort()[::1]
         ei_val = ei_val[idx]
         ei_vec = ei_vec[:, idx]
-        print_matrix(ei_vec, False)
         # generation of 1RDM
         self.gamma = np.zeros((self.N, self.N), dtype=np.float64)  # reset gamma
         # for Ne_cnt in range(0, Ne, 2): then we would have k goes from 0 to ...
@@ -107,17 +106,12 @@ class Householder:
             for i in range(self.N):
                 for j in range(self.N):
                     self.gamma[i, j] += ei_vec[i, k] * ei_vec[j, k]
-                    # print(k, i, j, self.gamma[i, j])
-        # print_matrix(self.gamma)
-
-        print(ei_val)
 
         mu_KS = ei_val[(self.Ne - 1) // 2]
-        print(mu_KS, self.Ne, self.Ne // 2)
         # end of subroutine
         self.procedure_log += f"CALCULATIONS MADE FOR THE KS SYSTEM WITH Ns = {self.N} and Ne = {self.Ne}\n"
         self.procedure_log += f"DENSITY = {n}\nTHE CHEMICAL POTENTIAL (mu_KS) ASSOCIATED WITH THE NUMBER OF ELECTRONS"
-        self.procedure_log += f" = {mu_KS}\n\nGAMMA0 \n{print_matrix(self.gamma, False, True)}\n"
+        # self.procedure_log += f" = {mu_KS}\n\nGAMMA0 \n{print_matrix(self.gamma, False, True)}\n"
         self.mu['KS'] = mu_KS
 
         # Householder vector generation
@@ -137,7 +131,6 @@ class Householder:
                               self.vars['d_occ'][1]
         self.e_site["type3"] = - 4.0 * self.t * self.gamma[0, 1] + self.U * self.vars['d_occ'][0]
         self.e_site["type4"] = self.e_site["main"] + self.U * (1.0 - n)
-        print(self.e_site["main"], 'asdasda')
         self.write_report(False)
 
     def generate_householder_vector(self):
@@ -167,14 +160,12 @@ class Householder:
 
         self.procedure_log += f"\nGENERATED HOUSEHOLDER VECTOR v\n"
         self.procedure_log += f"{f'{OUTPUT_SEPARATOR}'.join(['{num:{dec}}'.format(num=i, dec=OUTPUT_FORMATTING_NUMBER) for i in self.v])}\n\n"
-        print(self.v)
 
     def calculate_variables(self):
         self.vars = {'hopping': [0, 0], 'density': [0, 0], 'd_occ': [0, 0], 'deltav': 0, 'epsilon': 0, 'mu_imp': 0,
                      't_tilde': 0, 'N_electron_cluster': 0}
         N = self.N  # just for shorter code
         t_tilde = self.t + 2 * self.v[1] * (self.v[1] * self.h[0, 1] + self.v[N - 1] * self.h[0, N - 1])
-        print('del', "v(L-1)*h(L-1) = ", self.v[N - 1] * self.h[0, N - 1])
         t_tilde = - t_tilde
         U1 = 0
         epsil = [0, 0, 0]
