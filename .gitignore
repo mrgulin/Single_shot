@@ -130,6 +130,6 @@ dmypy.json
 
 
 # Results from calculations
-**/*Single_loop*
-**/*Procedure_log*
-!**/
+*Single_loop*
+*Procedure_log*
+
