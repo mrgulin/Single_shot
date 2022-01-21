@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-OUTPUT_FORMATING_NUMBER = "+.6f"
+OUTPUT_FORMATTING_NUMBER = "+12.6f"
 OUTPUT_SEPARATOR = "  "
 
 
@@ -9,7 +9,7 @@ def print_matrix(matrix, plot_heatmap=True, ret=False):
     ret_string = ""
     for line in matrix:
         for cell in line:
-            ret_string += '{num:{dec}}{separator}'.format(num=cell, dec=OUTPUT_FORMATING_NUMBER,
+            ret_string += '{num:{dec}}{separator}'.format(num=cell, dec=OUTPUT_FORMATTING_NUMBER,
                                                           separator=OUTPUT_SEPARATOR)
         ret_string = ret_string[:-len(OUTPUT_SEPARATOR)]
         ret_string += "\n"
@@ -63,11 +63,10 @@ class Householder:
 
         self.procedure_log = ""
         self.results_string = ''
-        self.combined_results_string = ''
+        self.combined_results_string = {'col_names': '', 'row': ''}
 
         self.vars = {'hopping': [0, 0], 'density': [0, 0], 'd_occ': [0, 0], 'deltav': 0, 'epsilon': 0, 'mu_imp': 0,
                      't_tilde': 0, 'N_electron_cluster': 0}
-        self.vars_int = {'epsil_v': [0, 0, 0], 'U1': 0}  # internal variables TODO: Maybe delete
 
         self.mu = {'KS': 0, 'imp': 0, 'ext': 0}
         self.e_site = {"main": None, 'without_mu_opt': None, 'type3': None, 'type4': None}
@@ -76,7 +75,7 @@ class Householder:
         """
         Equivalent to DENSITY_MATRIX subroutine
         """
-        if (self.Ne % 2) != 0 or type(self.Ne) != int:
+        if (self.Ne % 2) != 0:
             raise 'Problem! Number of electrons is not even!'
 
         n = float(self.Ne) / float(self.N)  # Density
@@ -139,7 +138,7 @@ class Householder:
         self.e_site["type3"] = - 4.0 * self.t * self.gamma[0, 1] + self.U * self.vars['d_occ'][0]
         self.e_site["type4"] = self.e_site["main"] + self.U * (1.0 - n)
         print(self.e_site["main"], 'asdasda')
-        # : None, 'without_mu_opt': None, 'type3': None, 'type4': None}
+        self.write_report(False)
 
     def generate_householder_vector(self):
         sum_M = 0
@@ -167,7 +166,7 @@ class Householder:
         self.gamma_tilde = self.P @ self.gamma @ self.P
 
         self.procedure_log += f"\nGENERATED HOUSEHOLDER VECTOR v\n"
-        self.procedure_log += f"{f'{OUTPUT_SEPARATOR}'.join(['{num:{dec}}'.format(num=i, dec=OUTPUT_FORMATING_NUMBER) for i in self.v])}\n\n"
+        self.procedure_log += f"{f'{OUTPUT_SEPARATOR}'.join(['{num:{dec}}'.format(num=i, dec=OUTPUT_FORMATTING_NUMBER) for i in self.v])}\n\n"
         print(self.v)
 
     def calculate_variables(self):
@@ -233,6 +232,7 @@ class Householder:
         self.vars['deltav'] = deltav
 
     def write_report(self, print_result=True):
+        # Result_string part
         n = float(self.Ne) / float(self.N)  # Density
         col1 = ['Ns', 'Ne', 'Density', 'μ_KS', 'μ_imp', 'μ_ext', 'Impurity occupation',
                 'gamma_01 from Hamiltonian', 'KE', 'D_occ from Hamiltonian', 't_tilde', 'epsilon']
@@ -241,24 +241,51 @@ class Householder:
                 self.vars["epsilon"]]
         max_col1 = 20
         for i in range(len(col1)):
-            if type(col2[i])!=list:
-                self.results_string  += f"{col1[i]:<{max_col1}} = {col2[i]:{OUTPUT_FORMATING_NUMBER}}\n"
+            if type(col2[i]) != list:
+                self.results_string += f"{col1[i]:<{max_col1}} = {col2[i]:{OUTPUT_FORMATTING_NUMBER}}\n"
             else:
                 self.results_string += f"{col1[i]}\n"
                 for index, string in enumerate(("Not optimized", "optimized")):
-                    self.results_string += f"    {string:<{max_col1-4}} = {col2[i][index]:{OUTPUT_FORMATING_NUMBER}}\n"
+                    self.results_string += f"    {string:<{max_col1 - 4}} = {col2[i][index]:{OUTPUT_FORMATTING_NUMBER}}\n"
         self.results_string += "*" * (max_col1 + 15) + '\n'
         if print_result: print(self.results_string)
 
+        # combined_result_string
+        columns = ['n', 'e_n(1)', 'e_n(2)', 'e_n(3)', 'e_n(4)', 't_tilde', 'hopp1', 'hopp2', 'epsil', 'Ec', 'd_occ1',
+                   'd_occ2', 'U0/t_tilde', 'Occ_cluster', 'dsty1', 'dsty2', 'mu_KS', 'mu_imp', 'mu_ext']
+        values = [n, self.e_site['without_mu_opt'], self.e_site['main'], self.e_site['type3'], self.e_site['type4'],
+                  self.vars['t_tilde']] + self.vars['hopping'] + [self.vars['epsilon'], self.vars['KE']] + \
+                 self.vars['d_occ'] + [self.U / self.vars['t_tilde'], self.gamma_tilde[0, 0] + self.gamma_tilde[1, 1]] + \
+                 self.vars['density'] + [self.mu['KS'], self.mu['imp'], self.mu['ext']]
+        val_str = ''.join([f'{num:{OUTPUT_FORMATTING_NUMBER}}' for num in values])
+        self.combined_results_string['row'] = val_str + '\n'
+        self.combined_results_string['col_names'] = "".join([f'{i:>{int(len(val_str)/len(columns))}}' for i in columns])
+        self.combined_results_string['col_names'] += '\n'
+        # I put col names and row data into combined_results_string. I used such formatting that columns are aligned
+
+
 
 def calculate_many_conditions(particle_number, U):
+    data_string = ''
+    result_string = ''
     for i in np.arange(2, particle_number * 2, 4):
         object = Householder(particle_number, i, U)
         object.calculate_one()
+        if result_string == '':
+            result_string = object.combined_results_string['col_names']
+        result_string += object.combined_results_string['row']
+        data_string += object.results_string
+    data_file = open(f"Single_loop-data-U_{U:.0f}-n.txt", 'w', encoding='UTF-8')
+    data_file.write(data_string)
+    data_file.close()
+    result_file = open(f"Single_loop-results-U_{U:.0f}-n.txt", 'w', encoding='UTF-8')
+    result_file.write(result_string)
+    result_file.close()
 
 
 if __name__ == "__main__":
-    obj = Householder(10, 4, 8)
+    """obj = Householder(10, 4, 8)
     obj.calculate_one()
-    obj.write_report()
+    print(obj.results_string)"""
     # print(obj.procedure_log)
+    calculate_many_conditions(10, 8)
