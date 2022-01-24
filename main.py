@@ -4,7 +4,7 @@ OUTPUT_FORMATTING_NUMBER = "+12.6f"
 OUTPUT_SEPARATOR = "  "
 
 
-def print_matrix(matrix, plot_heatmap=True, ret=False):
+def print_matrix(matrix, plot_heatmap='', ret=False):
     ret_string = ""
     for line in matrix:
         l1 = ['{num:{dec}}'.format(num=cell, dec=OUTPUT_FORMATTING_NUMBER) for cell in line]
@@ -13,6 +13,7 @@ def print_matrix(matrix, plot_heatmap=True, ret=False):
         plt.imshow(matrix, cmap='hot', interpolation='nearest')
         plt.colorbar()
         plt.show()
+        plt.title(plot_heatmap)
     if ret:
         return ret_string
     print(ret_string, end='')
@@ -45,7 +46,7 @@ def calculate_energy(U, U1, t_tilde, delta_v):
 
 
 class Householder:
-    def __init__(self, particle_number: int, electron_number: int, u: float, debug=False, skip_gamma_tilde=False):
+    def __init__(self, particle_number: int, electron_number: int, u: float, debug=False, skip_unnecessary=False):
         self.N = particle_number
         self.Ne = electron_number
 
@@ -68,8 +69,13 @@ class Householder:
         self.mu = {'KS': 0.0, 'imp': 0.0, 'ext': 0.0}
         self.e_site = {"main": 0.0, 'without_mu_opt': 0.0, 'type3': 0.0, 'type4': 0.0}
 
-        self.skip_gamma_tilde = skip_gamma_tilde
+        self.skip_unnecessary = skip_unnecessary
         self.debug = debug
+
+        self.ei_val = None
+        self.ei_vec = None
+
+        self.lieb_min_list = []
 
     def calculate_one(self):
         """
@@ -90,6 +96,9 @@ class Householder:
         idx = ei_val.argsort()[::1] # Sorting matrix and vector by ascending order
         ei_val = ei_val[idx]
         ei_vec = ei_vec[:, idx]
+        if not self.skip_unnecessary:
+            self.ei_vec = ei_vec
+            self.ei_val = ei_val
 
         # generation of 1RDM
         self.gamma = np.zeros((self.N, self.N), dtype=np.float64)  # reset gamma
@@ -111,7 +120,7 @@ class Householder:
         self.calculate_variables()
 
         # do a minimization
-        self.lieb_minimization()
+        self.lieb_maximization()
 
         self.mu['ext'] = self.mu['KS'] + self.mu["imp"]
         self.e_site["without_mu_opt"] = 4.0 * self.t * (1.0 - 2.0 * (self.v[1] ** 2)) * self.vars['hopping'][0] + \
@@ -169,7 +178,7 @@ class Householder:
             else:
                 self.v[i] = self.gamma[i, 0] / (2 * r)
 
-        if not self.skip_gamma_tilde:
+        if not self.skip_unnecessary:
             for i in range(self.N):
                 for j in range(self.N):
                     self.P[i, j] = int(i == j) - 2.0 * self.v[i] * self.v[j]
@@ -210,23 +219,25 @@ class Householder:
         self.vars['t_tilde'] = t_tilde
         self.vars['N_electron_cluster'] = self.vars['density'][0] * self.N
 
-    def lieb_minimization(self, ):
+    def lieb_maximization(self, ):
         n = [0, 0]
         n[0] = self.Ne / self.N
         delta_v = None
-        energy_lieb = -1000
-        for k in range(-3000, 3001):
-            delta_v_lieb = k / 200
+        F_lieb = -1000
+        self.lieb_min_list = []
+        # TODO: Is there no better way to do this maximization (steepest descend?)
+        for delta_v_lieb in np.arange(-15, 15, 1/200):
             if self.vars['t_tilde'] == 0:
                 print("Looks like you are trying to do minimization before variable calculation!")
             big_u, energy = calculate_energy(self.U, self.vars['U1'], self.vars['t_tilde'], delta_v_lieb)
-            energy_lieb_current = energy + delta_v_lieb * (n[0] - 1.0)
-
-            if energy_lieb_current > energy_lieb:
-                energy_lieb = energy_lieb_current
+            F_lieb_current = energy + delta_v_lieb * (n[0] - 1.0)  # * 2 / 2 and also
+            self.lieb_min_list.append([delta_v_lieb, energy, F_lieb_current])
+            if F_lieb_current > F_lieb:
+                F_lieb = F_lieb_current
                 delta_v = delta_v_lieb
                 n[1] = n[0]
         self.procedure_log += f""
+
         big_u, energy = calculate_energy(self.U, self.vars['U1'], self.vars['t_tilde'], delta_v)
 
         self.vars['d_occ'][1] = calculate_d_occ(self.vars['t_tilde'], energy, big_u, delta_v)
