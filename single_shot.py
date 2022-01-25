@@ -90,6 +90,10 @@ class Householder:
 
         self.lieb_min_list = []
 
+        self.mu_ext = 0
+        self.mu_KS = 0
+        self.mu_Hxc = 0
+
     def calculate_eigenvectors(self):
         """
         Workaround because np.linalg.eig didn't give right eigenvectors
@@ -112,8 +116,6 @@ class Householder:
         os.remove('temp_matrix.dat')
 
     def generate_1rdm(self):
-        start = datetime.now()
-        print("start:", start)
         # generation of 1RDM
         self.gamma = np.zeros((self.N, self.N), dtype=np.float64)  # reset gamma
         # for Ne_cnt in range(0, Ne, 2): then we would have k goes from 0 to ...
@@ -124,9 +126,6 @@ class Householder:
 
         # self.procedure_log += f" = {mu_KS}\n\nGAMMA0 \n{print_matrix(self.gamma, False, True)}\n"
         self.mu['KS'] = mu_ks
-
-        end = datetime.now()
-        print("end:", end, f'time difference = ({end-start}s)')
 
     def calculate_one(self):
         if (self.Ne % 2) != 0:
@@ -171,12 +170,12 @@ class Householder:
                               self.vars['d_occ'][1]
         self.e_site["type3"] = - 4.0 * self.t * self.gamma[0, 1] + self.U * self.vars['d_occ'][0]
         # Type3 is exact in the case of non-interacting electrons
-        self.e_site["type4"] = self.e_site["main"] + self.U * (1.0 - n)
+        self.e_site["type4"] = self.e_site["main"] + self.U * (1.0 - self.n)
         self.write_report(False)
 
         if self.debug:
             self.procedure_log += f"CALCULATIONS MADE FOR THE KS SYSTEM WITH Ns = {self.N} and Ne = {self.Ne} ==>"
-            self.procedure_log += f"DENSITY = {n}\n\n"
+            self.procedure_log += f"DENSITY = {self.n}\n\n"
             self.procedure_log += "Huckel_hamiltonian\n" + print_matrix(self.h, False, True) + '\n\n'
             self.procedure_log += "Eigenvectors\n" + print_matrix(ei_vec, False, True) + '\n\n'
             self.procedure_log += "Eigenvalues\n" + "".join([f"{i:{OUTPUT_FORMATTING_NUMBER}}" for i in ei_val]) + '\n'
@@ -186,10 +185,12 @@ class Householder:
             data_file.write(self.procedure_log)
             data_file.close()
 
-    def generate_huckel_hamiltonian(self):
+    def generate_huckel_hamiltonian(self, number_of_electrons = 0):
+        if number_of_electrons == 0:
+            number_of_electrons = self.Ne
         h = np.zeros((self.N, self.N), dtype=np.float64)  # reinitialization
         t = self.t
-        if (self.Ne / 2) % 2 == 0:
+        if (number_of_electrons / 2) % 2 == 0:
             h[0, self.N - 1] = t
             h[self.N - 1, 0] = t
             self.procedure_log += "ANTIPERIODIC" + '\n'
@@ -253,7 +254,7 @@ class Householder:
         epsilon_vector[2] = 4 * self.v[1] * (self.v[1] * epsilon_vector[0] - epsilon_vector[1])
         epsilon = epsilon_vector[2]
 
-        delta_v = epsilon + 0.5 * (U1 - self.U)
+        delta_v = epsilon + 0.5 * (U1 - self.U) + self.mu_Hxc
 
         big_u, energy = calculate_energy(self.U, U1, t_tilde, delta_v)
 
@@ -261,7 +262,6 @@ class Householder:
         self.vars['hopping'][0] = calculate_hopping(t_tilde, energy, big_u, delta_v)
         delta_v_pr = calculate_delta_v_pr(t_tilde, energy, big_u, delta_v)
         self.vars['density'][0] = 1.0 - delta_v_pr
-
         self.vars['delta_v'] = delta_v
         self.vars['epsilon'] = epsilon
         self.vars['epsil_v'] = epsilon_vector
@@ -365,5 +365,5 @@ if __name__ == "__main__":
     # print(obj.procedure_log)
     # calculate_many_conditions(100, 8)
     # calculate_many_conditions(10, 8)
-    obj = Householder(10, 18, 8, debug=True)
+    obj = Householder(10, 10, 8, debug=True)
     obj.calculate_one()
