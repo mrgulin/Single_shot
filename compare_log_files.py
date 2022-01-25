@@ -2,7 +2,7 @@
 This file tries to make eigenvectors from fortran and numpy log files more similar
 """
 import numpy as np
-from main import print_matrix
+from single_shot import print_matrix
 
 def read_file(path1):
     with open(path1) as conn:

@@ -1,5 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import subprocess
+import os
 OUTPUT_FORMATTING_NUMBER = "+12.6f"
 OUTPUT_SEPARATOR = "  "
 
@@ -29,7 +31,7 @@ def calculate_delta_v_pr(t_tilde, energy, big_u, delta_v):
     return (2.0 * delta_v * energy) / denominator
 
 
-def calculate_d_occ(t_tilde, energy, big_u, delta_v):
+def calculate_d_occ(t_tilde, energy, big_u, delta_v): # double_occupation
     denominator = (- 4.0 * (t_tilde ** 2) + big_u ** 2 - delta_v ** 2 - 4.0 * big_u * energy + 3.0 * (energy ** 2))
     return (- 2.0 * (t_tilde ** 2.0) - big_u * energy + energy ** 2 - delta_v * energy) / denominator
     # return (- 2.0 * t_tilde * t_tilde) - big_u * energy + energy ** 2 - 4.0 * big_u * energy + 3.0 * energy * energy
@@ -77,6 +79,28 @@ class Householder:
 
         self.lieb_min_list = []
 
+    def calculate_eigenvectors(self):
+        """
+        Workaround because np.linalg.eig didn't give right eigenvectors
+        :return:
+        """
+        conn = open('temp_size.dat', 'w')
+        conn.write(str(int(self.h.shape[0])))
+        conn.close()
+        np.savetxt('temp_matrix.dat', self.h)
+        if not os.path.isfile('calculate_eigenvectors.exe'):
+            subprocess.run(
+                ['gfortran', 'Calculate_eigenvectors.f90', 'diagmat.f90', 'liblapack.dll', 'libblas.dll', '-o',
+                 'calculate_eigenvectors'])
+        subprocess.run(['calculate_eigenvectors.exe'])
+        self.ei_vec = np.loadtxt('temp_ei_vec.dat')
+        self.ei_val = np.loadtxt('temp_ei_val.dat')
+        os.remove('temp_ei_vec.dat')
+        os.remove('temp_ei_val.dat')
+        os.remove('temp_size.dat')
+        os.remove('temp_matrix.dat')
+
+
     def calculate_one(self):
         """
         Equivalent to DENSITY_MATRIX subroutine
@@ -92,14 +116,20 @@ class Householder:
         self.h = self.generate_huckel_hamiltonian()
 
         # Generating eigenvalues and eigenvectors
-        ei_val, ei_vec = np.linalg.eig(self.h)  # v[:,i] corresponds to eigval w[i]
+        """ei_val, ei_vec = np.linalg.eig(self.h)  # v[:,i] corresponds to eigval w[i]
         idx = ei_val.argsort()[::1] # Sorting matrix and vector by ascending order
         ei_val = ei_val[idx]
         ei_vec = ei_vec[:, idx]
         if not self.skip_unnecessary:
             self.ei_vec = ei_vec
             self.ei_val = ei_val
-
+        print(self.h)
+        print_matrix(ei_vec, False)
+        # self.ei_vec = np.loadtxt('ei_vec_10_18.txt')
+        # ei_vec = self.ei_vec"""
+        self.calculate_eigenvectors()
+        ei_vec = self.ei_vec
+        ei_val = self.ei_val
         # generation of 1RDM
         self.gamma = np.zeros((self.N, self.N), dtype=np.float64)  # reset gamma
         # for Ne_cnt in range(0, Ne, 2): then we would have k goes from 0 to ...
@@ -230,7 +260,9 @@ class Householder:
             if self.vars['t_tilde'] == 0:
                 print("Looks like you are trying to do minimization before variable calculation!")
             big_u, energy = calculate_energy(self.U, self.vars['U1'], self.vars['t_tilde'], delta_v_lieb)
-            F_lieb_current = energy + delta_v_lieb * (n[0] - 1.0)  # * 2 / 2 and also
+            F_lieb_current = energy + delta_v_lieb * (n[0] - 1.0) # TODO: Emmanuel
+            # per site energy. We should maximize over F-mu*N but because we are doing per site we get
+            # f-nu*n
             self.lieb_min_list.append([delta_v_lieb, energy, F_lieb_current])
             if F_lieb_current > F_lieb:
                 F_lieb = F_lieb_current
@@ -315,3 +347,5 @@ if __name__ == "__main__":
     # calculate_many_conditions(10, 8)
     obj = Householder(10, 18, 8, debug=True)
     obj.calculate_one()
+
+
