@@ -4,6 +4,7 @@ import subprocess
 import os
 OUTPUT_FORMATTING_NUMBER = "+12.6f"
 OUTPUT_SEPARATOR = "  "
+from datetime import datetime
 
 
 def print_matrix(matrix, plot_heatmap='', ret=False):
@@ -38,6 +39,14 @@ def calculate_d_occ(t_tilde, energy, big_u, delta_v): # double_occupation
 
 
 def calculate_energy(U, U1, t_tilde, delta_v):
+    '''
+    This is replacing FCI in calculation because here we have enelytical result
+    :param U:
+    :param U1:
+    :param t_tilde:
+    :param delta_v:
+    :return:
+    '''
     big_u = 0.5 * (U1 + U)
     u = big_u / (2 * t_tilde)
     nu = delta_v / (2 * t_tilde)
@@ -48,11 +57,12 @@ def calculate_energy(U, U1, t_tilde, delta_v):
 
 
 class Householder:
-    def __init__(self, particle_number: int, electron_number: int, u: float, debug=False, skip_unnecessary=False):
+    def __init__(self, particle_number: int, electron_number: int, u: float, debug=False, skip_unnecessary=False,
+                 bath_interaction='NIB'):
         self.N = particle_number
         self.Ne = electron_number
         self.n = self.Ne / self.N
-
+        self.bath_interaction = bath_interaction
         self.t = 1.00
         self.U = u
         self.gamma = np.zeros((self.N, self.N), dtype=np.float64)
@@ -102,17 +112,21 @@ class Householder:
         os.remove('temp_matrix.dat')
 
     def generate_1rdm(self):
+        start = datetime.now()
+        print("start:", start)
         # generation of 1RDM
         self.gamma = np.zeros((self.N, self.N), dtype=np.float64)  # reset gamma
         # for Ne_cnt in range(0, Ne, 2): then we would have k goes from 0 to ...
         for k in range(int(self.Ne / 2)):  # go through all orbitals that are occupied!
-            for i in range(self.N):
-                for j in range(self.N):
-                    self.gamma[i, j] += ei_vec[i, k] * ei_vec[j, k]
-        mu_ks = ei_val[(self.Ne - 1) // 2]
+            vec_i = self.ei_vec[:, k][np.newaxis]
+            self.gamma += vec_i.T @ vec_i  #
+        mu_ks = self.ei_val[(self.Ne - 1) // 2]
 
         # self.procedure_log += f" = {mu_KS}\n\nGAMMA0 \n{print_matrix(self.gamma, False, True)}\n"
         self.mu['KS'] = mu_ks
+
+        end = datetime.now()
+        print("end:", end, f'time difference = ({end-start}s)')
 
     def calculate_one(self):
         if (self.Ne % 2) != 0:
@@ -121,7 +135,7 @@ class Householder:
         print(f'calculation with Ns={self.N}, Ne={self.Ne}, density={self.n}')
 
         # Huckel hamiltonian generation: self.h in our case
-        self.h = self.generate_huckel_hamiltonian()
+        self.generate_huckel_hamiltonian()
 
         # Generating eigenvalues and eigenvectors
         """ei_val, ei_vec = np.linalg.eig(self.h)  # v[:,i] corresponds to eigval w[i]
@@ -185,7 +199,7 @@ class Householder:
             self.procedure_log += "PERIODIC" + '\n'
 
         h += np.diag(np.full((self.N - 1), -t), -1) + np.diag(np.full((self.N - 1), -t), 1)
-        return h
+        self.h = h
 
     def generate_householder_vector(self):
         sum_m = 0
@@ -221,8 +235,16 @@ class Householder:
                      't_tilde': 0, 'N_electron_cluster': 0}
         N = self.N  # just for shorter code
         t_tilde = self.t + 2 * self.v[1] * (self.v[1] * self.h[0, 1] + self.v[N - 1] * self.h[0, N - 1])
+        # t_tilde: only this 2 terms in sumation over h_i0 are non-zero
         t_tilde = - t_tilde
-        U1 = 0
+        if self.bath_interaction == 'NIB':
+            U1 = 0
+        else:
+            # TODO: check!
+            U1 = 0
+            for i in range(1, self.N):
+                U1 += self.P[i, 1]
+            U1 *= self.U
         epsilon_vector = [0, 0, 0]
         for i in range(self.N):
             for j in range(self.N):
