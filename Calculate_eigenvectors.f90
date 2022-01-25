@@ -21,9 +21,9 @@ program Calculate_eigenvectors
 	CLOSE(100)
 	!end do
 		PRINT *, "A" !debug
-	do, i=1, size_matrix
-		print '(20f12.6)', A(i,:)
-	enddo
+	!do, i=1, size_matrix
+		!print '(20f12.6)', A(i,:)
+	!enddo
 	
 	CALL DIAGMAT(size_matrix,A,ei_val,ei_vec)
 	
