@@ -51,6 +51,7 @@ class Householder:
     def __init__(self, particle_number: int, electron_number: int, u: float, debug=False, skip_unnecessary=False):
         self.N = particle_number
         self.Ne = electron_number
+        self.n = self.Ne / self.N
 
         self.t = 1.00
         self.U = u
@@ -100,17 +101,24 @@ class Householder:
         os.remove('temp_size.dat')
         os.remove('temp_matrix.dat')
 
+    def generate_1rdm(self):
+        # generation of 1RDM
+        self.gamma = np.zeros((self.N, self.N), dtype=np.float64)  # reset gamma
+        # for Ne_cnt in range(0, Ne, 2): then we would have k goes from 0 to ...
+        for k in range(int(self.Ne / 2)):  # go through all orbitals that are occupied!
+            for i in range(self.N):
+                for j in range(self.N):
+                    self.gamma[i, j] += ei_vec[i, k] * ei_vec[j, k]
+        mu_ks = ei_val[(self.Ne - 1) // 2]
+
+        # self.procedure_log += f" = {mu_KS}\n\nGAMMA0 \n{print_matrix(self.gamma, False, True)}\n"
+        self.mu['KS'] = mu_ks
 
     def calculate_one(self):
-        """
-        Equivalent to DENSITY_MATRIX subroutine
-        """
         if (self.Ne % 2) != 0:
             raise 'Problem! Number of electrons is not even!'
 
-        n = float(self.Ne) / float(self.N)  # Density
-
-        print(f'calculation with Ns={self.N}, Ne={self.Ne}, density={n}')
+        print(f'calculation with Ns={self.N}, Ne={self.Ne}, density={self.n}')
 
         # Huckel hamiltonian generation: self.h in our case
         self.h = self.generate_huckel_hamiltonian()
@@ -130,18 +138,8 @@ class Householder:
         self.calculate_eigenvectors()
         ei_vec = self.ei_vec
         ei_val = self.ei_val
-        # generation of 1RDM
-        self.gamma = np.zeros((self.N, self.N), dtype=np.float64)  # reset gamma
-        # for Ne_cnt in range(0, Ne, 2): then we would have k goes from 0 to ...
-        for k in range(int(self.Ne / 2)):  # go through all orbitals that are occupied!
-            for i in range(self.N):
-                for j in range(self.N):
-                    self.gamma[i, j] += ei_vec[i, k] * ei_vec[j, k]
-        mu_ks = ei_val[(self.Ne - 1) // 2]
 
-       # TODO: maybe generate pictures of matrices
-        # self.procedure_log += f" = {mu_KS}\n\nGAMMA0 \n{print_matrix(self.gamma, False, True)}\n"
-        self.mu['KS'] = mu_ks
+        self.generate_1rdm()
 
         # Householder vector generation
         self.generate_householder_vector()
@@ -285,10 +283,9 @@ class Householder:
 
     def write_report(self, print_result=True):
         # Result_string part
-        n = float(self.Ne) / float(self.N)  # Density
         col1 = ['Ns', 'Ne', 'Density', 'μ_KS', 'μ_imp', 'μ_ext', 'Impurity occupation',
                 'gamma_01 from Hamiltonian', 'KE', 'D_occ from Hamiltonian', 't_tilde', 'epsilon']
-        col2 = [self.N, self.Ne, n, self.mu['KS'], self.mu['imp'], self.mu['ext'], self.vars['density'],
+        col2 = [self.N, self.Ne, self.n, self.mu['KS'], self.mu['imp'], self.mu['ext'], self.vars['density'],
                 self.vars['hopping'], self.vars["KE"], self.vars['d_occ'], self.vars["t_tilde"],
                 self.vars["epsilon"]]
         max_col1 = 20
@@ -307,8 +304,9 @@ class Householder:
         # combined_result_string
         columns = ['n', 'e_n(1)', 'e_n(2)', 'e_n(3)', 'e_n(4)', 't_tilde', 'hopp1', 'hopp2', 'epsil', 'Ec', 'd_occ1',
                    'd_occ2', 'U0/t_tilde', 'Occ_cluster', 'dsty1', 'dsty2', 'mu_KS', 'mu_imp', 'mu_ext']
-        values = [n, self.e_site['without_mu_opt'], self.e_site['main'], self.e_site['type3'], self.e_site['type4'],
-                  self.vars['t_tilde']] + self.vars['hopping'] + [self.vars['epsilon'], self.vars['KE']] + \
+        values = [self.n, self.e_site['without_mu_opt'], self.e_site['main'], self.e_site['type3'],
+                  self.e_site['type4'], self.vars['t_tilde']] + self.vars['hopping'] + [self.vars['epsilon'],
+                                                                                        self.vars['KE']] + \
                  self.vars['d_occ'] + [self.U / self.vars['t_tilde'], self.gamma_tilde[0, 0] +
                                        self.gamma_tilde[1, 1]] + \
                  self.vars['density'] + [self.mu['KS'], self.mu['imp'], self.mu['ext']]
@@ -347,5 +345,3 @@ if __name__ == "__main__":
     # calculate_many_conditions(10, 8)
     obj = Householder(10, 18, 8, debug=True)
     obj.calculate_one()
-
-
