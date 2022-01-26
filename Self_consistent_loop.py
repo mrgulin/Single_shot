@@ -39,9 +39,11 @@ class CS_Householder(single_shot.Householder):  # Child class!!
             # region DENSITY_MATRIX_BIS + SELFCONSISTENTLOOP_BIS
 
             # No need to calculate eigenvalues one more time if we are doing periodic conditions always!!
-            print(self.Ne, ' eigenvalue number: ', int(round(self.Ne)//2), int(round(self.Ne)), 'associated mu: ',
-                 self.ei_val[int(round(self.Ne)//2)])
-            self.mu_KS = self.ei_val[int(round(self.Ne)//2)]
+            index = round(self.Ne)
+            index -= 1
+            index /= 2
+            index = int(np.floor(index))
+            self.mu_KS = self.ei_val[index]
             self.mu_Hxc = self.mu_ext - self.mu_KS
             print(f'\tmu_KS {self.mu_KS}, mu_ext {self.mu_ext}, mu_Hxc = mu_KS-mu_ext {self.mu_Hxc}')
 
@@ -55,7 +57,7 @@ class CS_Householder(single_shot.Householder):  # Child class!!
             self.n = self.Ne / self.N
 
             self.generate_1rdm()
-            self.mu_KS = self.ei_val[int(round(self.Ne) // 2)]
+            self.mu_KS = self.ei_val[int(self.Ne / 2)]
             self.generate_householder_vector()
             self.calculate_variables()
             print('\tafter interaction, impurity site occupation = ', self.vars['density'][0])

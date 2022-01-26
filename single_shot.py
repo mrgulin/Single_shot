@@ -99,6 +99,14 @@ class Householder:
         Workaround because np.linalg.eig didn't give right eigenvectors
         :return:
         """
+        ei_val, ei_vec = np.linalg.eigh(obj.h, 'U')  # v[:,i] corresponds to eigval w[i]
+        # idx = ei_val.argsort()[::1]  # Sorting matrix and vector by ascending order
+        # ei_val = ei_val[idx]
+        # ei_vec = ei_vec[:, idx]
+        self.ei_val = ei_val
+        self.ei_vec = ei_vec
+
+    def calculate_eigenvectors_fr(self):
         conn = open('temp_size.dat', 'w')
         conn.write(str(int(self.h.shape[0])))
         conn.close()
@@ -365,5 +373,6 @@ if __name__ == "__main__":
     # print(obj.procedure_log)
     # calculate_many_conditions(100, 8)
     # calculate_many_conditions(10, 8)
-    obj = Householder(10, 10, 8, debug=True)
+    obj = Householder(10, 18, 8, debug=True)
     obj.calculate_one()
+    print_matrix(obj.gamma)
