@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import subprocess
 import os
-OUTPUT_FORMATTING_NUMBER = "+12.6f"
+OUTPUT_FORMATTING_NUMBER = "+15.10f"
 OUTPUT_SEPARATOR = "  "
 from datetime import datetime
 
@@ -99,7 +99,7 @@ class Householder:
         Workaround because np.linalg.eig didn't give right eigenvectors
         :return:
         """
-        ei_val, ei_vec = np.linalg.eigh(obj.h, 'U')  # v[:,i] corresponds to eigval w[i]
+        ei_val, ei_vec = np.linalg.eigh(self.h, 'U')  # v[:,i] corresponds to eigval w[i]
         # idx = ei_val.argsort()[::1]  # Sorting matrix and vector by ascending order
         # ei_val = ei_val[idx]
         # ei_vec = ei_vec[:, idx]
@@ -201,14 +201,15 @@ class Householder:
         if (number_of_electrons / 2) % 2 == 0:
             h[0, self.N - 1] = t
             h[self.N - 1, 0] = t
-            self.procedure_log += "ANTIPERIODIC" + '\n'
+            pl = "ANTIPERIODIC" + '\n'
         else:
             h[0, self.N - 1] = -t
             h[self.N - 1, 0] = -t
-            self.procedure_log += "PERIODIC" + '\n'
+            pl = "PERIODIC" + '\n'
 
         h += np.diag(np.full((self.N - 1), -t), -1) + np.diag(np.full((self.N - 1), -t), 1)
         self.h = h
+        return pl
 
     def generate_householder_vector(self):
         sum_m = 0
@@ -237,7 +238,7 @@ class Householder:
             self.gamma_tilde = self.P @ self.gamma @ self.P
 
         l1 = ['{num:{dec}}'.format(num=i, dec=OUTPUT_FORMATTING_NUMBER) for i in self.v]
-        self.procedure_log += f"{f'{OUTPUT_SEPARATOR}'.join(l1)}\n\n"
+        # self.procedure_log += f"{f'{OUTPUT_SEPARATOR}'.join(l1)}\n\n"
 
     def calculate_variables(self):
         self.vars = {'hopping': [0, 0], 'density': [0, 0], 'd_occ': [0, 0], 'delta_v': 0, 'epsilon': 0, 'mu_imp': 0,
@@ -373,6 +374,6 @@ if __name__ == "__main__":
     # print(obj.procedure_log)
     # calculate_many_conditions(100, 8)
     # calculate_many_conditions(10, 8)
-    obj = Householder(10, 18, 8, debug=True)
+    obj = Householder(12, 12, 8, debug=True)
     obj.calculate_one()
-    print_matrix(obj.gamma)
+    print_matrix(obj.ei_vec)
