@@ -55,33 +55,35 @@ class ScHouseholder(ss.Householder):  # Child class!!
             self.procedure_log += f" density)\n"
             self.procedure_log += f"\t\tμ_Hxc = μ_KS - μ_ext = {self.mu_Hxc}\n"
             self.procedure_log += f"\t\tBased on this potential we start to build new 1RDM with the correct μ_KS\n"
+
             N_ele = 0
             for j in range(self.N):  # Also size of matrix of 1RDM and ei_val
                 if self.ei_val[j] < self.mu_KS + 1E-10:
                     N_ele += 2
+
             self.Ne = N_ele
             self.n = self.Ne / self.N
-            self.procedure_log += f"\t\tBased on μ_KS={self.mu_KS} we get Ne={self.Ne} or n={self.n}\n"
             self.generate_1rdm()
             self.generate_householder_vector()
 
-            # self.mu_KS = self.ei_val[electron_number_to_ei_vec_id(self.Ne)]
-            # self.procedure_log += f"\t\tIn this 1RDM now μ_KS changed to {self.mu_KS}"
+            self.procedure_log += f"\t\tBased on μ_KS={self.mu_KS} we get Ne={self.Ne} or n={self.n}\n"
 
             self.calculate_variables()
             self.e_site["without_mu_opt"] = 4.0 * self.t * (1.0 - 2.0 * (self.v[1] ** 2)) * self.vars['hopping'][0] + \
                                             self.U * self.vars['d_occ'][0]
             self.e_site["main"] = 4.0 * self.t * (1.0 - 2.0 * (self.v[1] ** 2)) * self.vars['hopping'][0] + self.U * \
                                   self.vars['d_occ'][0]
-            self.procedure_log += f"\t\tBased on changed HH vector and μ_Hxc we calculate energy and also imp site"
-            self.procedure_log += f"\t\t\toccupation = {self.vars['density'][0]}, E_site = {self.e_site['main']}\n"
             self.Ne = self.vars['density'][0] * self.N
             self.n = self.Ne / self.N
+            conv_test = conv_test - self.Ne
+
+            self.procedure_log += f"\t\tBased on changed HH vector and μ_Hxc we calculate energy and also imp site"
+            self.procedure_log += f"\t\t\toccupation = {self.vars['density'][0]}, E_site = {self.e_site['main']}\n"
             self.procedure_log += f"\t\tBased on this occupation we can calculate new density = {self.n} and number"
             self.procedure_log += f" of electrons = {self.Ne}. This are data after loop\n"
-            conv_test = conv_test - self.Ne
             self.procedure_log += f"\t\tAt the end of loop we do convergence test: abs(Ne_start - Ne_end) = {conv_test}"
             self.procedure_log += f" has to be smaller then {convergence_threshold}\n"
+
             if abs(conv_test) < convergence_threshold:
                 self.procedure_log += f"\t\t\tIt is so we break the loop\n"
                 break
