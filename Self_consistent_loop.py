@@ -46,13 +46,7 @@ class ScHouseholder(ss.Householder):  # Child class!!
             # region DENSITY_MATRIX_BIS + SELFCONSISTENTLOOP_BIS
 
             # No need to calculate eigenvalues one more time if we are doing periodic conditions always!!
-            index = round(self.Ne)
-            index -= 1
-            index /= 2
-            index2 = int(np.floor(index))
             index = electron_number_to_ei_vec_id(self.Ne)
-            if index != index2:
-                raise "INDECES DO NOT MATCH!!!!!"  # TODO: delete index2 and this if!
             self.mu_KS = self.ei_val[index]
             self.mu_Hxc = self.mu_ext - self.mu_KS
 
