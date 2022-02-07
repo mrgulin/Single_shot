@@ -33,6 +33,8 @@ class ScHouseholder(ss.Householder):  # Child class!!
         self.e_site["main"] = 4.0 * self.t * (1.0 - 2.0 * (self.v[1] ** 2)) * self.vars['hopping'][0] + self.U * \
                               self.vars['d_occ'][0]
         self.procedure_log += f"\t\tEnergy based on filling is {self.e_site['main']}\n"
+        self.Ne = self.vars['density'][0] * self.N
+        self.n = self.Ne / self.N
 
     def loops(self, convergence_threshold=1.0e-5, max_iter=20):
         self.procedure_log += f"\tentering loops:\n"
@@ -40,11 +42,8 @@ class ScHouseholder(ss.Householder):  # Child class!!
         for self.iter_num in range(1, max_iter+1):
             self.procedure_log += f"\t- iteration {self.iter_num} --------------------------------------\n"
             print(self.iter_num, end=", ")
-            self.Ne = self.vars['density'][0] * self.N
-            self.n = self.Ne / self.N
             conv_test = self.Ne
             # region DENSITY_MATRIX_BIS + SELFCONSISTENTLOOP_BIS
-
             # No need to calculate eigenvalues one more time if we are doing periodic conditions always!!
             index = electron_number_to_ei_vec_id(self.Ne)
             self.mu_KS = self.ei_val[index]
