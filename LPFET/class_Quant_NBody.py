@@ -1,3 +1,5 @@
+# import sys
+# sys.path.append(r'C:\Users\tinc9\Documents\CNRS-offline')
 import Quant_NBody
 import numpy as np
 import scipy.sparse
