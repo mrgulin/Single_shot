@@ -2,23 +2,40 @@ import numpy as np
 import single_shot as ss
 import Quant_NBody
 import LPFET.class_Quant_NBody
+import single_shot
 
-def CASCI_dimer(gamma, u, v_ext):
+embedded_mol = LPFET.class_Quant_NBody.QuantNBody(2, 2)
+embedded_mol.build_operator_a_dagger_a()
+
+
+def CASCI_dimer(gamma, h, u, v_imp):
+    # Density in range [0, 2]
     P, v = Quant_NBody.Householder_transformation(gamma)
     y_a_tilde = P @ gamma @ P
-    h_tilde = np.einsum('ki, ij, jl -> kl', P, y_a_tilde, P)  # equivalent to P @ y_a_tilde @ P
+    # h_tilde = np.einsum('ki, ij, jl -> kl', P, y_a_tilde, P)
+    # print("!!!", np.allclose(P @ y_a_tilde @ P, np.einsum('ki, ij, jl -> kl', P, y_a_tilde, P)))
+    h_tilde = P @ h @ P
+    # single_shot.print_matrix(P)
+    # print('-')
+    # single_shot.print_matrix(h)
+    # print('-')
+    # single_shot.print_matrix(h_tilde)
     h_tilde_dimer = h_tilde[:2, :2]
     u_0_dimer = np.zeros((2, 2, 2, 2), dtype=np.float64)
     u_0_dimer[0, 0, 0, 0] += u
-    h_tilde_dimer[0, 0] -= v_ext
+    h_tilde_dimer[0, 0] += v_imp
+    print("--------\nh_tilde_dimer")
+    single_shot.print_matrix(h_tilde_dimer)
+
     # Subtract v_hcx
-    embedded_mol = LPFET.class_Quant_NBody.QuantNBody(2, 2)
-    embedded_mol.build_operator_a_dagger_a()
     embedded_mol.build_hamiltonian_fermi_hubbard(h_tilde_dimer, u_0_dimer)
     embedded_mol.diagonalize_hamiltonian()
     density_dimer = Quant_NBody.Build_One_RDM_alpha(embedded_mol.WFT_0, embedded_mol.a_dagger_a)
     # TODO: Change this with some object in class
-    density = density_dimer[0,0]
+    density = density_dimer[0, 0] * 2
+    print("--------\ndensity")
+    single_shot.print_matrix(density_dimer)
+    print(embedded_mol.ei_val)
     energy = embedded_mol.ei_val[0]
     return density, energy
 
@@ -50,9 +67,13 @@ class ScHouseholder(ss.Householder):  # Child class!!
         self.procedure_log += f"and density is {self.n}\n"
         self.generate_1rdm()
         self.generate_householder_vector()
-        self.calculate_variables()
-        self.e_site["main"] = 4.0 * self.t * (1.0 - 2.0 * (self.v[1] ** 2)) * self.vars['hopping'][0] + self.U * \
-                              self.vars['d_occ'][0]
+        # self.calculate_variables()
+        # self.e_site["main"] = 4.0 * self.t * (1.0 - 2.0 * (self.v[1] ** 2)) * self.vars['hopping'][0] + self.U * \
+        #                       self.vars['d_occ'][0]
+        print("Density1:", self.vars['density'][0])
+        density_ana = self.vars['density'][0]
+        self.vars['density'][0], self.e_site["main"] = CASCI_dimer(self.gamma, self.h, self.U, -self.mu_Hxc)
+        print("Density2:", self.vars['density'][0], "diffrence:", density_ana - self.vars['density'][0])
         self.procedure_log += f"\t\tEnergy based on filling is {self.e_site['main']}\n"
         self.Ne = self.vars['density'][0] * self.N
         self.n = self.Ne / self.N
@@ -60,7 +81,7 @@ class ScHouseholder(ss.Householder):  # Child class!!
     def loops(self, convergence_threshold=1.0e-5, max_iter=20):
         self.procedure_log += f"\tentering loops:\n"
         self.iter_num = 0
-        for self.iter_num in range(1, max_iter+1):
+        for self.iter_num in range(1, max_iter + 1):
             self.procedure_log += f"\t- iteration {self.iter_num} --------------------------------------\n"
             print(self.iter_num, end=", ")
             conv_test = self.Ne
@@ -88,17 +109,21 @@ class ScHouseholder(ss.Householder):  # Child class!!
 
             self.procedure_log += f"\t\tBased on μ_KS={self.mu_KS} we get Ne={self.Ne} or n={self.n}\n"
 
-            self.calculate_variables()
+            # self.calculate_variables()
             self.e_site["without_mu_opt"] = 4.0 * self.t * (1.0 - 2.0 * (self.v[1] ** 2)) * self.vars['hopping'][0] + \
                                             self.U * self.vars['d_occ'][0]
-            self.e_site["main"] = 4.0 * self.t * (1.0 - 2.0 * (self.v[1] ** 2)) * self.vars['hopping'][0] + self.U * \
-                                  self.vars['d_occ'][0]
+            # self.e_site["main"] = 4.0 * self.t * (1.0 - 2.0 * (self.v[1] ** 2)) * self.vars['hopping'][0] + self.U * \
+            #                       self.vars['d_occ'][0]
+            print("Density1:", self.vars['density'][0], '\n', self.vars)
+            density_ana = self.vars['density'][0]
+            self.vars['density'][0], self.e_site["main"] = CASCI_dimer(self.gamma, self.h, self.U, -self.mu_Hxc)
+            print("Density2:", self.vars['density'][0], "diffrence:", density_ana - self.vars['density'][0])
             self.Ne = self.vars['density'][0] * self.N
             self.n = self.Ne / self.N
             conv_test = conv_test - self.Ne
 
             self.procedure_log += f"\t\tBased on changed HH vector and μ_Hxc we calculate energy and also imp site"
-            self.procedure_log += f"\t\t\toccupation = {self.vars['density'][0]}, E_site = {self.e_site['main']}\n"
+            self.procedure_log += f" occupation = {self.vars['density'][0]}, E_site = {self.e_site['main']}\n"
             self.procedure_log += f"\t\tBased on this occupation we can calculate new density = {self.n} and number"
             self.procedure_log += f" of electrons = {self.Ne}. This are data after loop\n"
             self.procedure_log += f"\t\tAt the end of loop we do convergence test: abs(Ne_start - Ne_end) = {conv_test}"
@@ -151,25 +176,29 @@ class MetaScHouseholder:
         self.calculate_eigenvectors()
 
         for mu_ext1 in np.arange(*self.range):
-            obj2 = ScHouseholder(self.N, 4, mu_ext1)
-            obj2.h = self.h
-            obj2.ei_val = self.ei_val
-            obj2.ei_vec = self.ei_vec
+            obj2 = ScHouseholder(self.N, self.U, mu_ext1)
+            try:
+                obj2.h = self.h
+                obj2.ei_val = self.ei_val
+                obj2.ei_vec = self.ei_vec
+                obj2.self_consistent_loop(already_calculated=True)
 
-            obj2.self_consistent_loop(already_calculated=True)
+                obj2.loops()
 
-            obj2.loops()
+            except np.linalg.LinAlgError:
+                pass
             if result_string == '':
                 result_string = obj2.combined_results_string['col_names']
             result_string += obj2.combined_results_string['row']
             data_string += obj2.procedure_log
-            data_string += "-"*20+'\n'
-        data_file = open('procedure_log_sc/'+self.common_filename, 'w', encoding='UTF-8')
+            data_string += "-" * 20 + '\n'
+        data_file = open('procedure_log_sc/Saad_' + self.common_filename, 'w', encoding='UTF-8')
         data_file.write(data_string)
         data_file.close()
-        result_file = open(f"results_sc/"+self.common_filename, 'w', encoding='UTF-8')
+        result_file = open(f"results_sc/Saad_" + self.common_filename, 'w', encoding='UTF-8')
         result_file.write(result_string)
         result_file.close()
+        print(self.ei_val)
 
 
 def electron_number_to_ei_vec_id(Ne):
@@ -177,6 +206,8 @@ def electron_number_to_ei_vec_id(Ne):
     index -= 1
     index /= 2
     index = int(np.floor(index))
+    if index <= 0:
+        index = 0
     return index
 
 
@@ -186,5 +217,5 @@ if __name__ == '__main__':
     # obj.loops()
     # obj.write_report()
     # print(obj.procedure_log)
-    meta_obj = MetaScHouseholder(400, 4, -0.5, 0.5, 0.1)
+    meta_obj = MetaScHouseholder(6, 4, -0.5, 0.5, 0.01)
     meta_obj.calculate_many_potentials()

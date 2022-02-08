@@ -366,14 +366,5 @@ def calculate_many_conditions(particle_number, U):
     result_file.write(result_string)
     result_file.close()
 
-
-if __name__ == "__main__":
-    """obj = Householder(10, 4, 8)
-    obj.calculate_one()
-    print(obj.results_string)"""
-    # print(obj.procedure_log)
-    # calculate_many_conditions(100, 8)
-    # calculate_many_conditions(10, 8)
-    obj = Householder(12, 12, 8, debug=True)
-    obj.calculate_one()
-    print_matrix(obj.ei_vec)
+if __name__=='__main':
+    pass

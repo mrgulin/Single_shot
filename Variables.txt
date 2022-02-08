@@ -1,6 +1,0 @@
-Ns -> self.N
-Huckel_Hamiltonian, Huckel_H, .. -> self.h
-HH_vec -> self.v
-U0 -> self.U
-bigU -> vars['U_eff']
-Nelect -> Ne (local in some methods)

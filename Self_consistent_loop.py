@@ -77,7 +77,7 @@ class ScHouseholder(ss.Householder):  # Child class!!
             conv_test = conv_test - self.Ne
 
             self.procedure_log += f"\t\tBased on changed HH vector and μ_Hxc we calculate energy and also imp site"
-            self.procedure_log += f"\t\t\toccupation = {self.vars['density'][0]}, E_site = {self.e_site['main']}\n"
+            self.procedure_log += f" occupation = {self.vars['density'][0]}, E_site = {self.e_site['main']}\n"
             self.procedure_log += f"\t\tBased on this occupation we can calculate new density = {self.n} and number"
             self.procedure_log += f" of electrons = {self.Ne}. This are data after loop\n"
             self.procedure_log += f"\t\tAt the end of loop we do convergence test: abs(Ne_start - Ne_end) = {conv_test}"
@@ -130,7 +130,7 @@ class MetaScHouseholder:
         self.calculate_eigenvectors()
 
         for mu_ext1 in np.arange(*self.range):
-            obj2 = ScHouseholder(self.N, 4, mu_ext1)
+            obj2 = ScHouseholder(self.N, self.U, mu_ext1)
             obj2.h = self.h
             obj2.ei_val = self.ei_val
             obj2.ei_vec = self.ei_vec
@@ -165,5 +165,5 @@ if __name__ == '__main__':
     # obj.loops()
     # obj.write_report()
     # print(obj.procedure_log)
-    meta_obj = MetaScHouseholder(400, 4, -0.5, 0.5, 0.1)
+    meta_obj = MetaScHouseholder(10, 1, 0.2, 0.2, 0.1)
     meta_obj.calculate_many_potentials()
