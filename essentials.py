@@ -1,4 +1,5 @@
 import matplotlib.pyplot as plt
+import numpy as np
 
 OUTPUT_FORMATTING_NUMBER = "+6.2f"
 OUTPUT_SEPARATOR = "  "
