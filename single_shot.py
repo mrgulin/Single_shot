@@ -2,24 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import subprocess
 import os
-OUTPUT_FORMATTING_NUMBER = "+15.10f"
-OUTPUT_SEPARATOR = "  "
-from datetime import datetime
-
-
-def print_matrix(matrix, plot_heatmap='', ret=False):
-    ret_string = ""
-    for line in matrix:
-        l1 = ['{num:{dec}}'.format(num=cell, dec=OUTPUT_FORMATTING_NUMBER) for cell in line]
-        ret_string += f'{OUTPUT_SEPARATOR}'.join(l1) + "\n"
-    if plot_heatmap:
-        plt.imshow(matrix, cmap='hot', interpolation='nearest')
-        plt.colorbar()
-        plt.show()
-        plt.title(plot_heatmap)
-    if ret:
-        return ret_string
-    print(ret_string, end='')
+from essentials import OUTPUT_SEPARATOR, OUTPUT_FORMATTING_NUMBER, print_matrix
 
 
 def calculate_hopping(t_tilde, energy, big_u, delta_v):
