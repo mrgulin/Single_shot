@@ -4,18 +4,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 import scipy.optimize
 from datetime import datetime
-from essentials import OUTPUT_SEPARATOR, OUTPUT_FORMATTING_NUMBER, print_matrix
+from essentials import OUTPUT_SEPARATOR, OUTPUT_FORMATTING_NUMBER, print_matrix, generate_1rdm
 
-def generate_1rdm(Ns, Ne, wave_function):
-    # generation of 1RDM
-    if Ne % 2 != 0:
-        raise f'problem with number of electrons!! Ne = {Ne}, Ns = {Ns}'
-
-    y = np.zeros((Ns, Ns), dtype=np.float64)  # reset gamma
-    for k in range(int(Ne / 2)):  # go through all orbitals that are occupied!
-        vec_i = wave_function[:, k][np.newaxis]
-        y += vec_i.T @ vec_i  #
-    return y
+# For plotting of the molecule (if you don't need this you can delete Molecule.plot_hubbard_molecule
+# and this import statements
+import pandas as pd
+import networkx as nx
 
 def log_calculate_ks_decorator(func):
     """
@@ -23,6 +17,7 @@ def log_calculate_ks_decorator(func):
     :param func:  calculate_ks function
     :return: nested function
     """
+
     def wrapper_func(self):
         ret_val = func(self)
 
@@ -53,10 +48,11 @@ def log_calculate_ks_decorator(func):
         temp1 = ['{num:{dec}}'.format(num=cell, dec=OUTPUT_FORMATTING_NUMBER) for cell in self.n_ks]
         self.report_string += f'{OUTPUT_SEPARATOR}'.join(temp1) + '\n'
         return ret_val
+
     return wrapper_func
 
-def log_add_parameters_decorator(func):
 
+def log_add_parameters_decorator(func):
     def wrapper_func(self, u, t, v_ext, equiv_atom_group_list):
         ret_val = func(self, u, t, v_ext, equiv_atom_group_list)
         self.report_string += f"add_parameters:\n\tU_iiii\n\t"
@@ -67,10 +63,13 @@ def log_add_parameters_decorator(func):
         temp1 = print_matrix(self.t, ret=True).replace('\n', '\n\t')[:-1]
         self.report_string += f'\n\tt\n\t' + temp1
         return ret_val
+
     return wrapper_func
 
+
 class Molecule:
-    def __init__(self, site_number, electron_number):
+    def __init__(self, site_number, electron_number, description=''):
+        self.description = f"{datetime.now().strftime('%Y_%m_%d_%H_%M')}" + description
         # Basic data about system
         self.Ns = site_number
         self.Ne = electron_number
@@ -134,10 +133,10 @@ class Molecule:
         if overwrite_output:
             conn = open(overwrite_output, "w", encoding="UTF-8")
         else:
-            conn = open(f"results/results_{self.Ns}_{self.Ne}_{datetime.now().strftime('%Y_%m_%d_%H_%M')}.dat", "w",
-                        encoding="UTF-8")
+            conn = open(f"results/{self.description}_log.dat", "w", encoding="UTF-8")
         conn.write(self.report_string)
         conn.close()
+
     @log_calculate_ks_decorator
     def calculate_ks(self):
         self.mu_s = self.mu_hxc - self.v_ext
@@ -167,7 +166,7 @@ class Molecule:
 
             h_tilde_dimer = h_tilde[:2, :2]
             u_0_dimer = np.zeros((2, 2, 2, 2), dtype=np.float64)
-            u_0_dimer[0,0,0,0] += self.u[site_id]
+            u_0_dimer[0, 0, 0, 0] += self.u[site_id]
             # h_tilde_dimer[0,0] += self.v_ext[site_id]
             mu_imp = self.mu_hxc[site_id]
 
@@ -194,11 +193,11 @@ class Molecule:
         mol_full.build_operator_a_dagger_a()
         u_4d = np.zeros((self.Ns, self.Ns, self.Ns, self.Ns))
         for i in range(self.Ns):
-            u_4d[i,i,i,i] = self.u[i]
+            u_4d[i, i, i, i] = self.u[i]
         mol_full.build_hamiltonian_fermi_hubbard(self.t + np.diag(self.v_ext), u_4d)
         mol_full.diagonalize_hamiltonian()
         y_ab = mol_full.calculate_1RDM_tot()
-        print("FCI densities (per spin):", y_ab.diagonal()/2)
+        print("FCI densities (per spin):", y_ab.diagonal() / 2)
         return y_ab, mol_full
 
     def plot_density_evolution(self):
@@ -245,7 +244,42 @@ class Molecule:
         self.report_string += f'{OUTPUT_SEPARATOR}'.join(temp1) + "\n"
         self.report_string += f"\taverage square difference: {mean_square_difference_density}\n\tStopping" \
                               f" condtition: ({mean_square_difference_density:8.4f}<{tolerance:8.4f}) OR " \
-                              f"({i+1}>={num_iter})\n"
+                              f"({i + 1}>={num_iter})\n"
+
+
+    def plot_hubbard_molecule(self):
+        G = nx.Graph()
+        colors = ['lightgrey', 'mistyrose', 'lightcyan', 'thistle', 'orange']
+        color_map = []
+        labeldict = {}
+        edge_labels = dict()
+        for i in range(self.Ns):
+            node_string = f"U={self.u[i]}\nv_ext={self.v_ext[i]}"
+            for key, value in self.equiv_atom_groups.items():
+                if i in value:
+                    group_id = key
+                    break
+            else:
+                group_id = -1
+            G.add_nodes_from([(i, {'color':colors[group_id]})])
+            labeldict[i] = node_string
+            for j in range(i, self.Ns):
+                if self.t[i, j] != 0:
+                    edge_string = f"{self.t[i,j]}"
+                    G.add_edge(i, j)
+                    edge_labels[(i, j)] = edge_string
+        for i in G.nodes:
+            color_map.append(G.nodes[i]['color'])
+        fig, ax = plt.subplots(1, 1)
+        position = nx.spring_layout(G)
+        nx.draw(G, pos=position, ax=ax, labels=labeldict, with_labels=True, node_color=color_map, node_size=5000,
+                font_weight='bold')
+        nx.draw_networkx_edge_labels(G, position, edge_labels)
+        ax.set_xlim(*np.array(ax.get_xlim()) * 1.3)
+        ax.set_ylim(*np.array(ax.get_ylim()) * 1.3)
+        print(f"results/{self.description}_molecule.png")
+        fig.show()
+        fig.savefig(f"results/{self.description}_molecule.svg")
 
 
 def cost_function_CASCI(mu_imp, embedded_mol, h_tilde_dimer, u_0_dimer, desired_density):
@@ -256,6 +290,7 @@ def cost_function_CASCI(mu_imp, embedded_mol, h_tilde_dimer, u_0_dimer, desired_
 
     density_dimer = Quant_NBody.Build_One_RDM_alpha(embedded_mol.WFT_0, embedded_mol.a_dagger_a)
     return (density_dimer[0, 0] - desired_density) ** 2
+
 
 def generate_from_graph(sites, connections):
     """
@@ -281,34 +316,17 @@ def generate_from_graph(sites, connections):
         t[pair[1], pair[0]] = -param
     return t, v, u
 
-def ring_abab_calculate_ks_difference_1rdm():
-    mol1 = Molecule(4, 4)
-    x = []
-    y1 = []
-    y2 = []
-    for pmv in np.arange(0, 3, 0.1):
-        t, v_ext, u = generate_from_graph(
-            {0: {'v': -pmv, 'U': 1}, 1: {'v': pmv, 'U': 1}, 2: {'v': -pmv, 'U': 1}, 3: {'v': pmv, 'U': 1}},
-            {(0, 1): 1, (1, 2): 1, (2, 3): 1, (0, 3): 1})
-        mol1.add_parameters(u, t, v_ext, [[0, 2], [1, 3]])
-        mol1.calculate_ks()
-        x.append(pmv)
-        y1.append(mol1.n_ks[0])
-        y2.append(mol1.n_ks[1])
-    plt.plot(x, y1)
-    plt.plot(x, y2)
-    plt.show()
-    # Problem that 4 site with 4 electron is still degenerated (I think!)
-
 
 
 if __name__ == "__main__":
-
-    mol1 = Molecule(6, 6)
     pmv = 0.1
-    t, v_ext, u = generate_from_graph({0:{'v':-pmv, 'U':1}, 1:{'v':pmv, 'U':1}, 2:{'v':pmv, 'U':1}, 3:{'v':-pmv, 'U':1},
-                                       4:{'v':pmv, 'U':1}, 5:{'v':pmv, 'U':1}},
-                                      {(0, 1):1, (1, 2):1, (2, 3):1, (3,4):1, (4,5):1, (0,5):1})
+    mol1 = Molecule(6, 6, f'ring6_2sites_{pmv}')
+
+    t, v_ext, u = generate_from_graph(
+        {0: {'v': -pmv, 'U': 1}, 1: {'v': pmv, 'U': 1}, 2: {'v': pmv, 'U': 1}, 3: {'v': -pmv, 'U': 1},
+         4: {'v': pmv, 'U': 1}, 5: {'v': pmv, 'U': 1}},
+        {(0, 1): 1, (1, 2): 1, (2, 3): 1, (3, 4): 1, (4, 5): 1, (0, 5): 1})
     mol1.add_parameters(u, t, v_ext, [[0, 3], [1, 2, 4, 5]])
-    mol1.self_consistent_loop()
-    y_real, mol_full = mol1.compare_densities_FCI()
+    mol1.plot_hubbard_molecule()
+    # mol1.self_consistent_loop()
+    # y_real, mol_full = mol1.compare_densities_FCI()
