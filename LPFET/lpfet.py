@@ -2,7 +2,7 @@ import class_Quant_NBody
 import Quant_NBody
 import numpy as np
 import matplotlib.pyplot as plt
-import scipy.optimize
+import scipy.optimize as sc_opt
 from datetime import datetime
 from essentials import OUTPUT_SEPARATOR, OUTPUT_FORMATTING_NUMBER, print_matrix, generate_1rdm
 
@@ -10,6 +10,7 @@ from essentials import OUTPUT_SEPARATOR, OUTPUT_FORMATTING_NUMBER, print_matrix,
 # and this import statements
 import pandas as pd
 import networkx as nx
+
 
 def log_calculate_ks_decorator(func):
     """
@@ -168,18 +169,20 @@ class Molecule:
             u_0_dimer = np.zeros((2, 2, 2, 2), dtype=np.float64)
             u_0_dimer[0, 0, 0, 0] += self.u[site_id]
             # h_tilde_dimer[0,0] += self.v_ext[site_id]
-            mu_imp = self.mu_hxc[site_id]
+            mu_imp = self.mu_hxc[[site_id]]  # Double parenthesis so I keep array, in future this will be list of
+            # indices for block householder
 
             self.log_CASCI(site_id, y_a_correct_imp, P, v, h_tilde, h_tilde_dimer)
 
-            optimized_v_imp_obj = scipy.optimize.minimize(cost_function_CASCI,
-                                                          np.array([mu_imp]),
-                                                          args=(self.embedded_mol, h_tilde_dimer, u_0_dimer,
-                                                                self.n_ks[site_id]),
-                                                          method='BFGS', tol=1e-2)
+            opt_v_imp_obj = sc_opt.minimize(cost_function_CASCI, mu_imp,
+                                            args=(self.embedded_mol, h_tilde_dimer, u_0_dimer, self.n_ks[site_id]),
+                                            method='BFGS', tol=1e-2)
             # This minimize cost function (difference between KS occupations and CASCI occupations squared)
-            error = optimized_v_imp_obj['fun']
-            mu_imp = optimized_v_imp_obj['x'][0]
+            error = opt_v_imp_obj['fun']
+            mu_imp = opt_v_imp_obj['x'][0]
+
+            see_landscape_ruggedness(self.embedded_mol, h_tilde_dimer, u_0_dimer, goal_density=self.n_ks[site_id],
+                                     optimized_potential=mu_imp, num_dim=1)
 
             self.report_string += f'\t\t\tOptimized chemical potential mu_imp: {mu_imp}\n'
             self.report_string += f'\t\t\tError in densities (square): {error}\n'
@@ -246,7 +249,6 @@ class Molecule:
                               f" condtition: ({mean_square_difference_density:8.4f}<{tolerance:8.4f}) OR " \
                               f"({i + 1}>={num_iter})\n"
 
-
     def plot_hubbard_molecule(self):
         G = nx.Graph()
         colors = ['lightgrey', 'mistyrose', 'lightcyan', 'thistle', 'orange']
@@ -261,11 +263,11 @@ class Molecule:
                     break
             else:
                 group_id = -1
-            G.add_nodes_from([(i, {'color':colors[group_id]})])
+            G.add_nodes_from([(i, {'color': colors[group_id]})])
             labeldict[i] = node_string
             for j in range(i, self.Ns):
                 if self.t[i, j] != 0:
-                    edge_string = f"{self.t[i,j]}"
+                    edge_string = f"{self.t[i, j]}"
                     G.add_edge(i, j)
                     edge_labels[(i, j)] = edge_string
         for i in G.nodes:
@@ -291,6 +293,23 @@ def cost_function_CASCI(mu_imp, embedded_mol, h_tilde_dimer, u_0_dimer, desired_
     density_dimer = Quant_NBody.Build_One_RDM_alpha(embedded_mol.WFT_0, embedded_mol.a_dagger_a)
     return (density_dimer[0, 0] - desired_density) ** 2
 
+def see_landscape_ruggedness(embedded_mol, h_tilde_dimer, u_0_dimer, goal_density=False, optimized_potential=False,
+                             num_dim=1, arange=(-2, 2 + 0.1 , 0.1)):
+    if num_dim == 1:
+        x = np.arange(*arange)
+        y = []
+        for mu_imp in x:
+            abs_error = np.sqrt(cost_function_CASCI([mu_imp], embedded_mol, h_tilde_dimer, u_0_dimer, 0))
+            y.append(abs_error)
+        fig, ax = plt.subplots(1,1)
+        ax.plot(x, y)
+        if goal_density:
+            plt.hlines(goal_density, *ax.get_xlim(), label="Goal density")
+        if optimized_potential:
+            plt.vlines(optimized_potential, *ax.get_ylim(), label='return of optimizer')
+        string1 = f"{datetime.now().strftime('%d_%H_%M_%S_%f')}"
+        ax.set_title(string1)
+        fig.savefig("results/" + string1+".png")
 
 def generate_from_graph(sites, connections):
     """
@@ -317,7 +336,6 @@ def generate_from_graph(sites, connections):
     return t, v, u
 
 
-
 if __name__ == "__main__":
     pmv = 0.1
     mol1 = Molecule(6, 6, f'ring6_2sites_{pmv}')
@@ -328,5 +346,5 @@ if __name__ == "__main__":
         {(0, 1): 1, (1, 2): 1, (2, 3): 1, (3, 4): 1, (4, 5): 1, (0, 5): 1})
     mol1.add_parameters(u, t, v_ext, [[0, 3], [1, 2, 4, 5]])
     mol1.plot_hubbard_molecule()
-    # mol1.self_consistent_loop()
+    mol1.self_consistent_loop()
     # y_real, mol_full = mol1.compare_densities_FCI()
