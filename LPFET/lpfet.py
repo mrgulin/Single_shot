@@ -3,6 +3,7 @@ import Quant_NBody
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy.optimize
+from datetime import datetime
 from essentials import OUTPUT_SEPARATOR, OUTPUT_FORMATTING_NUMBER, print_matrix
 
 def generate_1rdm(Ns, Ne, wave_function):
@@ -99,6 +100,8 @@ class Molecule:
 
         self.report_string = f'Object with {self.Ns} sites and {self.Ne} electrons\n'
 
+        self.density_progress = []  # This object is used for gathering changes in the density over iterations
+
     @log_add_parameters_decorator
     def add_parameters(self, u, t, v_ext, equiv_atom_group_list):
         if len(u) != self.Ns or len(t) != self.Ns or len(v_ext) != self.Ns:
@@ -109,14 +112,13 @@ class Molecule:
         for index, item in enumerate(equiv_atom_group_list):
             self.equiv_atom_groups[index] = tuple(item)
 
-    def self_consistent_loop(self, num_iter=10, tolerance=0.0):
+    def self_consistent_loop(self, num_iter=10, tolerance=0.001, overwrite_output=""):
         self.report_string += "self_consistent_loop:\n"
         old_density = np.inf
-        densities = []
         for i in range(num_iter):
             self.report_string += f"Iteration # = {i}\n"
             self.calculate_ks()
-            densities.append(self.n_ks.copy())
+            self.density_progress.append(self.n_ks.copy())
             self.CASCI()
             print(f"Loop {i}-----")
             print("\tdensities:", self.n_ks)
@@ -128,12 +130,14 @@ class Molecule:
             if mean_square_difference_density < tolerance:
                 break
             old_density = self.n_ks
-        densities = np.array(densities)
-        for i in range(densities.shape[1]):
-            plt.plot(densities[:,i])
-        plt.show()
-
-
+        self.density_progress = np.array(self.density_progress)
+        if overwrite_output:
+            conn = open(overwrite_output, "w", encoding="UTF-8")
+        else:
+            conn = open(f"results/results_{self.Ns}_{self.Ne}_{datetime.now().strftime('%Y_%m_%d_%H_%M')}.dat", "w",
+                        encoding="UTF-8")
+        conn.write(self.report_string)
+        conn.close()
     @log_calculate_ks_decorator
     def calculate_ks(self):
         self.mu_s = self.mu_hxc - self.v_ext
@@ -197,6 +201,14 @@ class Molecule:
         print("FCI densities (per spin):", y_ab.diagonal()/2)
         return y_ab, mol_full
 
+    def plot_density_evolution(self):
+        for i in range(self.density_progress.shape[1]):
+            plt.plot(self.density_progress[:, i])
+        plt.xlabel("Iteration")
+        plt.ylabel("Density")
+        plt.title("Evolution of density in simulation")
+        plt.show()
+
     def log_CASCI(self, site_id, y_a_correct_imp, P, v, h_tilde, h_tilde_dimer):
         self.report_string += f'\t\t\tNew 1RDM that is optained by replacing indices 0 and {site_id}\n\t\t\t'
         temp1 = print_matrix(y_a_correct_imp, ret=True).replace('\n', '\n\t\t\t')[:-3]
@@ -231,8 +243,9 @@ class Molecule:
         else:
             temp1 = ['{num:{dec}}'.format(num=cell, dec=OUTPUT_FORMATTING_NUMBER) for cell in old_density]
         self.report_string += f'{OUTPUT_SEPARATOR}'.join(temp1) + "\n"
-        self.report_string += f"\tO: average square difference: {mean_square_difference_density}\n\tO:Stopping" \
-                              f" condtition: {mean_square_difference_density}<{tolerance} OR {i}>={num_iter}-1"
+        self.report_string += f"\taverage square difference: {mean_square_difference_density}\n\tStopping" \
+                              f" condtition: ({mean_square_difference_density:8.4f}<{tolerance:8.4f}) OR " \
+                              f"({i+1}>={num_iter})\n"
 
 
 def cost_function_CASCI(mu_imp, embedded_mol, h_tilde_dimer, u_0_dimer, desired_density):
@@ -290,29 +303,7 @@ def ring_abab_calculate_ks_difference_1rdm():
 
 
 if __name__ == "__main__":
-    # circle = Molecule(6, 6)
-    # Ns = 6
-    # number_of_electrons = 6
-    # # region generation of ring
-    # h = np.zeros((Ns, Ns), dtype=np.float64)  # reinitialization
-    # t = 1
-    # if (number_of_electrons / 2) % 2 == 0:
-    #     h[0, Ns - 1] = t
-    #     h[Ns - 1, 0] = t
-    #     pl = "ANTIPERIODIC" + '\n'
-    # else:
-    #     h[0, Ns - 1] = -t
-    #     h[Ns - 1, 0] = -t
-    #     pl = "PERIODIC" + '\n'
-    #
-    # h += np.diag(np.full((Ns - 1), -t), -1) + np.diag(np.full((Ns - 1), -t), 1)
-    # u = np.zeros(Ns) + 4
-    # v_ext = np.zeros(Ns)
-    # eq_sites = [list(range(6))]
-    # # endregion
-    # circle.add_parameters(u, h, v_ext, eq_sites)
-    # circle.calculate_ks()
-    # circle.CASCI()
+
     mol1 = Molecule(6, 6)
     pmv = 0.1
     t, v_ext, u = generate_from_graph({0:{'v':-pmv, 'U':1}, 1:{'v':pmv, 'U':1}, 2:{'v':pmv, 'U':1}, 3:{'v':-pmv, 'U':1},
@@ -320,5 +311,4 @@ if __name__ == "__main__":
                                       {(0, 1):1, (1, 2):1, (2, 3):1, (3,4):1, (4,5):1, (0,5):1})
     mol1.add_parameters(u, t, v_ext, [[0, 3], [1, 2, 4, 5]])
     mol1.self_consistent_loop()
-    print(mol1.report_string)
     y_real, mol_full = mol1.compare_densities_FCI()
