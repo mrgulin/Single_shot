@@ -17,3 +17,13 @@ def print_matrix(matrix, plot_heatmap='', ret=False):
         return ret_string
     print(ret_string, end='')
 
+def generate_1rdm(Ns, Ne, wave_function):
+    # generation of 1RDM
+    if Ne % 2 != 0:
+        raise f'problem with number of electrons!! Ne = {Ne}, Ns = {Ns}'
+
+    y = np.zeros((Ns, Ns), dtype=np.float64)  # reset gamma
+    for k in range(int(Ne / 2)):  # go through all orbitals that are occupied!
+        vec_i = wave_function[:, k][np.newaxis]
+        y += vec_i.T @ vec_i  #
+    return y
