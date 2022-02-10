@@ -17,6 +17,11 @@ def generate_1rdm(Ns, Ne, wave_function):
     return y
 
 def log_calculate_ks_decorator(func):
+    """
+    Wrapper that adds data to Molecule.report_string for method calculate_ks. Doesn't affect behaviour of the program!!
+    :param func:  calculate_ks function
+    :return: nested function
+    """
     def wrapper_func(self):
         ret_val = func(self)
 
@@ -104,6 +109,31 @@ class Molecule:
         for index, item in enumerate(equiv_atom_group_list):
             self.equiv_atom_groups[index] = tuple(item)
 
+    def self_consistent_loop(self, num_iter=10, tolerance=0.0):
+        self.report_string += "self_consistent_loop:\n"
+        old_density = np.inf
+        densities = []
+        for i in range(num_iter):
+            self.report_string += f"Iteration # = {i}\n"
+            self.calculate_ks()
+            densities.append(self.n_ks.copy())
+            self.CASCI()
+            print(f"Loop {i}-----")
+            print("\tdensities:", self.n_ks)
+            print('\tnew Hxc potentials: ', self.mu_hxc)
+            mean_square_difference_density = np.average(np.square(self.n_ks - old_density))
+
+            self.log_scl(old_density, mean_square_difference_density, i, tolerance, num_iter)
+
+            if mean_square_difference_density < tolerance:
+                break
+            old_density = self.n_ks
+        densities = np.array(densities)
+        for i in range(densities.shape[1]):
+            plt.plot(densities[:,i])
+        plt.show()
+
+
     @log_calculate_ks_decorator
     def calculate_ks(self):
         self.mu_s = self.mu_hxc - self.v_ext
@@ -111,43 +141,6 @@ class Molecule:
         self.epsilon_s, self.wf_ks = np.linalg.eigh(self.h_ks, 'U')
         self.y_a = generate_1rdm(self.Ns, self.Ne, self.wf_ks)
         self.n_ks = np.copy(self.y_a.diagonal())
-
-    def log_CASCI(self, site_id, y_a_correct_imp, P, v, h_tilde, h_tilde_dimer):
-        self.report_string += f'\t\t\tNew 1RDM that is optained by replacing indices 0 and {site_id}\n\t\t\t'
-        temp1 = print_matrix(y_a_correct_imp, ret=True).replace('\n', '\n\t\t\t')[:-3]
-        self.report_string += temp1
-
-        self.report_string += "\t\t\tv vector\n\t\t\t"
-        temp1 = ['{num:{dec}}'.format(num=cell, dec=OUTPUT_FORMATTING_NUMBER) for cell in v[:, 0]]
-        self.report_string += f'{OUTPUT_SEPARATOR}'.join(temp1) + "\n"
-
-        self.report_string += f'\t\t\tP matrix\n\t\t\t'
-        temp1 = print_matrix(P, ret=True).replace('\n', '\n\t\t\t')[:-3]
-        self.report_string += temp1
-
-        self.report_string += f'\t\t\th tilde\n\t\t\t'
-        temp1 = print_matrix(h_tilde, ret=True).replace('\n', '\n\t\t\t')[:-3]
-        self.report_string += temp1
-
-        self.report_string += f'\t\t\th tilde dimer\n\t\t\t'
-        temp1 = print_matrix(h_tilde_dimer, ret=True).replace('\n', '\n\t\t\t')[:-3]
-        self.report_string += temp1
-
-        self.report_string += f'\t\t\tU0 parameter: {self.u[site_id]}\n'
-        self.report_string += f'\t\t\tStarting impurity chemical potential mu_imp: {self.mu_hxc[site_id]}\n'
-
-    def log_scl(self, old_density, mean_square_difference_density, i, tolerance, num_iter):
-        self.report_string += f"\tNew densities: "
-        temp1 = ['{num:{dec}}'.format(num=cell, dec=OUTPUT_FORMATTING_NUMBER) for cell in self.n_ks]
-        self.report_string += f'{OUTPUT_SEPARATOR}'.join(temp1) + "\n"
-        self.report_string += f"\tOld densities: "
-        if type(old_density) == float:
-            temp1 = ["inf"]
-        else:
-            temp1 = ['{num:{dec}}'.format(num=cell, dec=OUTPUT_FORMATTING_NUMBER) for cell in old_density]
-        self.report_string += f'{OUTPUT_SEPARATOR}'.join(temp1) + "\n"
-        self.report_string += f"\tO: average square difference: {mean_square_difference_density}\n\tO:Stopping" \
-                              f" condtition: {mean_square_difference_density}<{tolerance} OR {i}>={num_iter}-1"
 
     def CASCI(self):
         self.report_string += "\tEntered CASCI\n"
@@ -192,31 +185,6 @@ class Molecule:
             for every_site_id in self.equiv_atom_groups[site_group]:
                 self.mu_hxc[every_site_id] = mu_imp
 
-    def self_consistent_loop(self, num_iter=10, tolerance=0.0):
-        self.report_string += "self_consistent_loop:\n"
-        old_density = np.inf
-        densities = []
-        for i in range(num_iter):
-            self.report_string += f"Iteration # = {i}\n"
-            self.calculate_ks()
-            densities.append(self.n_ks.copy())
-            self.CASCI()
-            print(f"Loop {i}-----")
-            print("\tdensities:", self.n_ks)
-            print('\tnew Hxc potentials: ', self.mu_hxc)
-            mean_square_difference_density = np.average(np.square(self.n_ks - old_density))
-
-            self.log_scl(old_density, mean_square_difference_density, i, tolerance, num_iter)
-
-            if mean_square_difference_density < tolerance:
-                break
-            old_density = self.n_ks
-        densities = np.array(densities)
-        for i in range(densities.shape[1]):
-            plt.plot(densities[:,i])
-        plt.show()
-
-
     def compare_densities_FCI(self):
         mol_full = class_Quant_NBody.QuantNBody(self.Ns, self.Ne)
         mol_full.build_operator_a_dagger_a()
@@ -228,6 +196,43 @@ class Molecule:
         y_ab = mol_full.calculate_1RDM_tot()
         print("FCI densities (per spin):", y_ab.diagonal()/2)
         return y_ab, mol_full
+
+    def log_CASCI(self, site_id, y_a_correct_imp, P, v, h_tilde, h_tilde_dimer):
+        self.report_string += f'\t\t\tNew 1RDM that is optained by replacing indices 0 and {site_id}\n\t\t\t'
+        temp1 = print_matrix(y_a_correct_imp, ret=True).replace('\n', '\n\t\t\t')[:-3]
+        self.report_string += temp1
+
+        self.report_string += "\t\t\tv vector\n\t\t\t"
+        temp1 = ['{num:{dec}}'.format(num=cell, dec=OUTPUT_FORMATTING_NUMBER) for cell in v[:, 0]]
+        self.report_string += f'{OUTPUT_SEPARATOR}'.join(temp1) + "\n"
+
+        self.report_string += f'\t\t\tP matrix\n\t\t\t'
+        temp1 = print_matrix(P, ret=True).replace('\n', '\n\t\t\t')[:-3]
+        self.report_string += temp1
+
+        self.report_string += f'\t\t\th tilde\n\t\t\t'
+        temp1 = print_matrix(h_tilde, ret=True).replace('\n', '\n\t\t\t')[:-3]
+        self.report_string += temp1
+
+        self.report_string += f'\t\t\th tilde dimer\n\t\t\t'
+        temp1 = print_matrix(h_tilde_dimer, ret=True).replace('\n', '\n\t\t\t')[:-3]
+        self.report_string += temp1
+
+        self.report_string += f'\t\t\tU0 parameter: {self.u[site_id]}\n'
+        self.report_string += f'\t\t\tStarting impurity chemical potential mu_imp: {self.mu_hxc[site_id]}\n'
+
+    def log_scl(self, old_density, mean_square_difference_density, i, tolerance, num_iter):
+        self.report_string += f"\tNew densities: "
+        temp1 = ['{num:{dec}}'.format(num=cell, dec=OUTPUT_FORMATTING_NUMBER) for cell in self.n_ks]
+        self.report_string += f'{OUTPUT_SEPARATOR}'.join(temp1) + "\n"
+        self.report_string += f"\tOld densities: "
+        if type(old_density) == float:
+            temp1 = ["inf"]
+        else:
+            temp1 = ['{num:{dec}}'.format(num=cell, dec=OUTPUT_FORMATTING_NUMBER) for cell in old_density]
+        self.report_string += f'{OUTPUT_SEPARATOR}'.join(temp1) + "\n"
+        self.report_string += f"\tO: average square difference: {mean_square_difference_density}\n\tO:Stopping" \
+                              f" condtition: {mean_square_difference_density}<{tolerance} OR {i}>={num_iter}-1"
 
 
 def cost_function_CASCI(mu_imp, embedded_mol, h_tilde_dimer, u_0_dimer, desired_density):
