@@ -82,7 +82,6 @@ class Molecule:
         self.equiv_atom_groups = dict()
 
         # density matrix
-        # TODO: What do I actially need?
         self.y_a = np.array((), dtype=np.float64)  # y --> gamma, a --> alpha so this indicates it is only per one spin
 
         # KS
@@ -131,6 +130,9 @@ class Molecule:
                 break
             old_density = self.n_ks
         self.density_progress = np.array(self.density_progress)
+        self.report_string += f'Final Hxc chemical potential:\n'
+        temp1 = ['{num:{dec}}'.format(num=cell, dec=OUTPUT_FORMATTING_NUMBER) for cell in self.mu_hxc]
+        self.report_string += f'{OUTPUT_SEPARATOR}'.join(temp1) + "\n"
         if overwrite_output:
             conn = open(overwrite_output, "w", encoding="UTF-8")
         else:
@@ -181,8 +183,8 @@ class Molecule:
             error = opt_v_imp_obj['fun']
             mu_imp = opt_v_imp_obj['x'][0]
 
-            see_landscape_ruggedness(self.embedded_mol, h_tilde_dimer, u_0_dimer, goal_density=self.n_ks[site_id],
-                                     optimized_potential=mu_imp, num_dim=1)
+            # see_landscape_ruggedness(self.embedded_mol, h_tilde_dimer, u_0_dimer, goal_density=self.n_ks[site_id],
+            #                          optimized_potential=mu_imp, num_dim=1)
 
             self.report_string += f'\t\t\tOptimized chemical potential mu_imp: {mu_imp}\n'
             self.report_string += f'\t\t\tError in densities (square): {error}\n'
@@ -190,6 +192,10 @@ class Molecule:
             print(f"managed to get E^2={error} with mu_imp={mu_imp}")
             for every_site_id in self.equiv_atom_groups[site_group]:
                 self.mu_hxc[every_site_id] = mu_imp
+
+        self.report_string += f'\t\tHxc chemical potential in the end of a cycle:\n\t\t'
+        temp1 = ['{num:{dec}}'.format(num=cell, dec=OUTPUT_FORMATTING_NUMBER) for cell in self.mu_hxc]
+        self.report_string += f'{OUTPUT_SEPARATOR}'.join(temp1) + "\n"
 
     def compare_densities_FCI(self):
         mol_full = class_Quant_NBody.QuantNBody(self.Ns, self.Ne)
@@ -283,6 +289,23 @@ class Molecule:
         fig.show()
         fig.savefig(f"results/{self.description}_molecule.svg")
 
+    def clear_object(self, description=''):
+        """
+        This method is used to clear all data that would mess with the self consistent loop without reloading
+        a_dagger_a. This enables us faster calculations
+        :param description:
+        :return: Nada
+        """
+        self.description = f"{datetime.now().strftime('%Y_%m_%d_%H_%M')}" + description
+        self.u = np.array((), dtype=np.float64)
+        self.t = np.array((), dtype=np.float64)
+        self.v_ext = np.array((), dtype=np.float64)
+        self.equiv_atom_groups = dict()
+        self.mu_hxc = np.zeros(self.Ns, dtype=np.float64)  # Hartree exchange correlation potential
+        self.report_string += f'\n{"#" * 50 }\nClear of data! From now on There is a new object \n' \
+                              f'{"#" * 50 }\n\nObject (still) with {self.Ns} sites and {self.Ne} electrons\n'
+        self.density_progress = []  # This object is used for gathering changes in the density over iterations
+
 
 def cost_function_CASCI(mu_imp, embedded_mol, h_tilde_dimer, u_0_dimer, desired_density):
     mu_imp = mu_imp[0]
@@ -345,6 +368,8 @@ if __name__ == "__main__":
          4: {'v': pmv, 'U': 1}, 5: {'v': pmv, 'U': 1}},
         {(0, 1): 1, (1, 2): 1, (2, 3): 1, (3, 4): 1, (4, 5): 1, (0, 5): 1})
     mol1.add_parameters(u, t, v_ext, [[0, 3], [1, 2, 4, 5]])
-    mol1.plot_hubbard_molecule()
-    mol1.self_consistent_loop()
+    mol1.clear_object("New object :)")
+    mol1.add_parameters(u, t, v_ext, [[0, 3], [1, 2, 4, 5]])
+    # mol1.plot_hubbard_molecule()
+    # mol1.self_consistent_loop()
     # y_real, mol_full = mol1.compare_densities_FCI()
