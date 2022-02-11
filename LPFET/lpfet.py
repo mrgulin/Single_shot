@@ -207,9 +207,11 @@ class Molecule:
                 mu_minus_2 = self.mu_hxc_progress[-2][index]
                 mu_minus_1 = self.mu_hxc_progress[-1][index]
                 if (mu_minus_2 - mu_minus_1) * (mu_minus_1 - mu_imp) < 0 and\
-                        abs(mu_minus_2 - mu_minus_1) * 0.75 > abs(mu_minus_1 - mu_imp):
+                        abs(mu_minus_2 - mu_minus_1) * 0.75 < abs(mu_minus_1 - mu_imp):
                     # First statement means that potential correction turned direction and second means that it is large
-                    mu_imp = mu_minus_1 + (mu_imp - mu_minus_1) * 0.85
+                    new_mu_imp = mu_minus_1 + (mu_imp - mu_minus_1) * 0.75
+                    print(f'{mu_minus_2}->{mu_minus_1}->{new_mu_imp}!={mu_imp}')
+                    mu_imp = new_mu_imp
                 for every_site_id in self.equiv_atom_groups[site_group]:
                     self.mu_hxc[every_site_id] = mu_imp
         if oscillation_compensation == 0:
@@ -329,7 +331,7 @@ class Molecule:
         self.report_string += f'\n{"#" * 50 }\nClear of data! From now on There is a new object \n' \
                               f'{"#" * 50 }\n\nObject (still) with {self.Ns} sites and {self.Ne} electrons\n'
         self.density_progress = []  # This object is used for gathering changes in the density over iterations
-
+        self.mu_hxc_progress = []
 
 def cost_function_CASCI(mu_imp, embedded_mol, h_tilde_dimer, u_0_dimer, desired_density):
     mu_imp = mu_imp[0]
