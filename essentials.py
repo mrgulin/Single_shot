@@ -1,8 +1,8 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
-OUTPUT_FORMATTING_NUMBER = "+6.2f"
-OUTPUT_SEPARATOR = "  "
+OUTPUT_FORMATTING_NUMBER = "+8.3f"
+OUTPUT_SEPARATOR = " "
 
 def print_matrix(matrix, plot_heatmap='', ret=False):
     ret_string = ""
