@@ -100,6 +100,7 @@ class Molecule:
         self.report_string = f'Object with {self.Ns} sites and {self.Ne} electrons\n'
 
         self.density_progress = []  # This object is used for gathering changes in the density over iterations
+        self.mu_hxc_progress = []
 
     @log_add_parameters_decorator
     def add_parameters(self, u, t, v_ext, equiv_atom_group_list):
@@ -111,14 +112,16 @@ class Molecule:
         for index, item in enumerate(equiv_atom_group_list):
             self.equiv_atom_groups[index] = tuple(item)
 
-    def self_consistent_loop(self, num_iter=10, tolerance=0.0001, overwrite_output=""):
+    def self_consistent_loop(self, num_iter=10, tolerance=0.0001, overwrite_output="", oscillation_compensation=0):
         self.report_string += "self_consistent_loop:\n"
         old_density = np.inf
+        i = 0
         for i in range(num_iter):
             self.report_string += f"Iteration # = {i}\n"
             self.calculate_ks()
             self.density_progress.append(self.n_ks.copy())
-            self.CASCI()
+            self.CASCI(oscillation_compensation)
+            self.mu_hxc_progress.append(self.mu_hxc.copy())
             print(f"Loop {i}", end = ', ')
             mean_square_difference_density = np.average(np.square(self.n_ks - old_density))
 
@@ -146,7 +149,7 @@ class Molecule:
         self.y_a = generate_1rdm(self.Ns, self.Ne, self.wf_ks)
         self.n_ks = np.copy(self.y_a.diagonal())
 
-    def CASCI(self):
+    def CASCI(self, oscillation_compensation=0):
         self.report_string += "\tEntered CASCI\n"
         for site_group in self.equiv_atom_groups.keys():
             self.report_string += f"\t\tGroup {site_group} with sites {self.equiv_atom_groups[site_group]}\n"
@@ -188,12 +191,31 @@ class Molecule:
             self.report_string += f'\t\t\tError in densities (square): {error}\n'
 
             # print(f"managed to get E^2={error} with mu_imp={mu_imp}")
-            for every_site_id in self.equiv_atom_groups[site_group]:
-                self.mu_hxc[every_site_id] = mu_imp
+
+            self.update_mu_hxc(site_group, mu_imp, oscillation_compensation)
 
         self.report_string += f'\t\tHxc chemical potential in the end of a cycle:\n\t\t'
         temp1 = ['{num:{dec}}'.format(num=cell, dec=OUTPUT_FORMATTING_NUMBER) for cell in self.mu_hxc]
         self.report_string += f'{OUTPUT_SEPARATOR}'.join(temp1) + "\n"
+
+    def update_mu_hxc(self, site_group, mu_imp, oscillation_compensation):
+        if oscillation_compensation == 1:
+            if len(self.mu_hxc_progress) < 2:
+                oscillation_compensation = 0
+            else:
+                index = self.equiv_atom_groups[site_group][0]
+                mu_minus_2 = self.mu_hxc_progress[-2][index]
+                mu_minus_1 = self.mu_hxc_progress[-1][index]
+                if (mu_minus_2 - mu_minus_1) * (mu_minus_1 - mu_imp) < 0 and\
+                        abs(mu_minus_2 - mu_minus_1) * 0.75 > abs(mu_minus_1 - mu_imp):
+                    # First statement means that potential correction turned direction and second means that it is large
+                    mu_imp = mu_minus_1 + (mu_imp - mu_minus_1) * 0.85
+                for every_site_id in self.equiv_atom_groups[site_group]:
+                    self.mu_hxc[every_site_id] = mu_imp
+        if oscillation_compensation == 0:
+            for every_site_id in self.equiv_atom_groups[site_group]:
+                self.mu_hxc[every_site_id] = mu_imp
+
 
     def compare_densities_FCI(self, pass_object=False):
         if type(pass_object) != bool:
