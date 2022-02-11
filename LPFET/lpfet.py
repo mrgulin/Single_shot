@@ -136,6 +136,7 @@ class Molecule:
             conn = open(f"results/{self.description}_log.dat", "w", encoding="UTF-8")
         conn.write(self.report_string)
         conn.close()
+        return i
 
     @log_calculate_ks_decorator
     def calculate_ks(self):
