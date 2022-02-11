@@ -111,7 +111,7 @@ class Molecule:
         for index, item in enumerate(equiv_atom_group_list):
             self.equiv_atom_groups[index] = tuple(item)
 
-    def self_consistent_loop(self, num_iter=10, tolerance=0.001, overwrite_output=""):
+    def self_consistent_loop(self, num_iter=10, tolerance=0.0001, overwrite_output=""):
         self.report_string += "self_consistent_loop:\n"
         old_density = np.inf
         for i in range(num_iter):
@@ -119,9 +119,7 @@ class Molecule:
             self.calculate_ks()
             self.density_progress.append(self.n_ks.copy())
             self.CASCI()
-            print(f"Loop {i}-----")
-            print("\tdensities:", self.n_ks)
-            print('\tnew Hxc potentials: ', self.mu_hxc)
+            print(f"Loop {i}", end = ', ')
             mean_square_difference_density = np.average(np.square(self.n_ks - old_density))
 
             self.log_scl(old_density, mean_square_difference_density, i, tolerance, num_iter)
@@ -129,7 +127,6 @@ class Molecule:
             if mean_square_difference_density < tolerance:
                 break
             old_density = self.n_ks
-        self.density_progress = np.array(self.density_progress)
         self.report_string += f'Final Hxc chemical potential:\n'
         temp1 = ['{num:{dec}}'.format(num=cell, dec=OUTPUT_FORMATTING_NUMBER) for cell in self.mu_hxc]
         self.report_string += f'{OUTPUT_SEPARATOR}'.join(temp1) + "\n"
@@ -189,7 +186,7 @@ class Molecule:
             self.report_string += f'\t\t\tOptimized chemical potential mu_imp: {mu_imp}\n'
             self.report_string += f'\t\t\tError in densities (square): {error}\n'
 
-            print(f"managed to get E^2={error} with mu_imp={mu_imp}")
+            # print(f"managed to get E^2={error} with mu_imp={mu_imp}")
             for every_site_id in self.equiv_atom_groups[site_group]:
                 self.mu_hxc[every_site_id] = mu_imp
 
@@ -197,9 +194,12 @@ class Molecule:
         temp1 = ['{num:{dec}}'.format(num=cell, dec=OUTPUT_FORMATTING_NUMBER) for cell in self.mu_hxc]
         self.report_string += f'{OUTPUT_SEPARATOR}'.join(temp1) + "\n"
 
-    def compare_densities_FCI(self):
-        mol_full = class_Quant_NBody.QuantNBody(self.Ns, self.Ne)
-        mol_full.build_operator_a_dagger_a()
+    def compare_densities_FCI(self, pass_object=False):
+        if type(pass_object) != bool:
+            mol_full = pass_object
+        else:
+            mol_full = class_Quant_NBody.QuantNBody(self.Ns, self.Ne)
+            mol_full.build_operator_a_dagger_a()
         u_4d = np.zeros((self.Ns, self.Ns, self.Ns, self.Ns))
         for i in range(self.Ns):
             u_4d[i, i, i, i] = self.u[i]
@@ -210,6 +210,7 @@ class Molecule:
         return y_ab, mol_full
 
     def plot_density_evolution(self):
+        self.density_progress = np.array(self.density_progress)
         for i in range(self.density_progress.shape[1]):
             plt.plot(self.density_progress[:, i])
         plt.xlabel("Iteration")
@@ -262,7 +263,7 @@ class Molecule:
         labeldict = {}
         edge_labels = dict()
         for i in range(self.Ns):
-            node_string = f"U={self.u[i]}\nv_ext={self.v_ext[i]}"
+            node_string = f"U={self.u[i]:.1f}\nv_ext={self.v_ext[i]:.3f}"
             for key, value in self.equiv_atom_groups.items():
                 if i in value:
                     group_id = key
