@@ -11,6 +11,18 @@ from essentials import OUTPUT_SEPARATOR, OUTPUT_FORMATTING_NUMBER, print_matrix,
 import pandas as pd
 import networkx as nx
 
+COMPENSATION_1_RATIO = 0.75  # for the Molecule.update_mu_hxc
+
+def change_indices(array_inp: np.array, site_id: int):
+    array = np.copy(array_inp)
+    if site_id != 0:
+        # We have to move impurity on the index 0
+        if array_inp.ndim == 2:
+            array[:, [0, site_id]] = array[:, [site_id, 0]]
+            array[[0, site_id], :] = array[[site_id, 0], :]
+        elif array_inp.ndim == 1:
+            array[[0, site_id]] = array[[site_id, 0]]
+    return array
 
 def log_calculate_ks_decorator(func):
     """
@@ -156,16 +168,12 @@ class Molecule:
             site_id = self.equiv_atom_groups[site_group][0]
 
             # Householder transforms impurity on index 0 so we have to make sure that impurity is on index 0:
-            if site_id == 0:
-                y_a_correct_imp = np.copy(self.y_a)
-            else:
-                # We have to move impurity on the index 0
-                y_a_correct_imp = np.copy(self.y_a)
-                y_a_correct_imp[:, [0, site_id]] = y_a_correct_imp[:, [site_id, 0]]
-                y_a_correct_imp[[0, site_id], :] = y_a_correct_imp[[site_id, 0], :]
+            y_a_correct_imp = change_indices(self.y_a, site_id)
+            t_correct_imp = change_indices(self.t, site_id)
+            v_ext_correct_imp = change_indices(self.v_ext, site_id)
 
             P, v = Quant_NBody.Householder_transformation(y_a_correct_imp)
-            h_tilde = P @ (self.t + np.diag(self.v_ext)) @ P
+            h_tilde = P @ (t_correct_imp + np.diag(v_ext_correct_imp)) @ P
             # TODO: Ask Fromager how should this be!!!
 
             h_tilde_dimer = h_tilde[:2, :2]
@@ -209,8 +217,8 @@ class Molecule:
                 if (mu_minus_2 - mu_minus_1) * (mu_minus_1 - mu_imp) < 0 and\
                         abs(mu_minus_2 - mu_minus_1) * 0.75 < abs(mu_minus_1 - mu_imp):
                     # First statement means that potential correction turned direction and second means that it is large
-                    new_mu_imp = mu_minus_1 + (mu_imp - mu_minus_1) * 0.75
-                    print(f'{mu_minus_2}->{mu_minus_1}->{new_mu_imp}!={mu_imp}')
+                    new_mu_imp = mu_minus_1 + (mu_imp - mu_minus_1) * COMPENSATION_1_RATIO
+                    print(f'{mu_minus_2:.2f}->{mu_minus_1:.2f}->{new_mu_imp:.2f}!={mu_imp:.2f}', end=', ')
                     mu_imp = new_mu_imp
                 for every_site_id in self.equiv_atom_groups[site_group]:
                     self.mu_hxc[every_site_id] = mu_imp
@@ -283,7 +291,7 @@ class Molecule:
 
     def plot_hubbard_molecule(self):
         G = nx.Graph()
-        colors = ['lightgrey', 'mistyrose', 'lightcyan', 'thistle', 'orange']
+        colors = ['lightgrey', 'mistyrose', 'lightcyan', 'thistle', 'springgreen', 'yellow', 'cyan', 'magenta', 'orange']
         color_map = []
         labeldict = {}
         edge_labels = dict()
