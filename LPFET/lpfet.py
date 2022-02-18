@@ -113,6 +113,9 @@ class Molecule:
 
         self.density_progress = []  # This object is used for gathering changes in the density over iterations
         self.mu_hxc_progress = []
+        
+        self.iteration_i = 0
+        self.oscillation_correction_dict = dict()
 
     @log_add_parameters_decorator
     def add_parameters(self, u, t, v_ext, equiv_atom_group_list):
@@ -129,6 +132,7 @@ class Molecule:
         old_density = np.inf
         i = 0
         for i in range(num_iter):
+            self.iteration_i = i
             self.report_string += f"Iteration # = {i}\n"
             self.calculate_ks()
             self.density_progress.append(self.n_ks.copy())
@@ -220,6 +224,7 @@ class Molecule:
                     new_mu_imp = mu_minus_1 + (mu_imp - mu_minus_1) * COMPENSATION_1_RATIO
                     print(f'{mu_minus_2:.2f}->{mu_minus_1:.2f}->{new_mu_imp:.2f}!={mu_imp:.2f}', end=', ')
                     mu_imp = new_mu_imp
+                    self.oscillation_correction_dict[(self.iteration_i, index)] = (mu_minus_2, mu_minus_1, mu_imp, new_mu_imp)
                 for every_site_id in self.equiv_atom_groups[site_group]:
                     self.mu_hxc[every_site_id] = mu_imp
         if oscillation_compensation == 0:
@@ -340,6 +345,8 @@ class Molecule:
                               f'{"#" * 50 }\n\nObject (still) with {self.Ns} sites and {self.Ne} electrons\n'
         self.density_progress = []  # This object is used for gathering changes in the density over iterations
         self.mu_hxc_progress = []
+        
+        self.oscillation_correction_dict = dict()
 
 def cost_function_CASCI(mu_imp, embedded_mol, h_tilde_dimer, u_0_dimer, desired_density):
     mu_imp = mu_imp[0]
