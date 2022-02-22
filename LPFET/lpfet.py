@@ -1,9 +1,15 @@
 import class_Quant_NBody
-import Quant_NBody
+
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy.optimize as sc_opt
 from datetime import datetime
+
+import sys
+sys.path.append('../')
+import essentials
+import Quant_NBody
+
 from essentials import OUTPUT_SEPARATOR, OUTPUT_FORMATTING_NUMBER, print_matrix, generate_1rdm
 
 # For plotting of the molecule (if you don't need this you can delete Molecule.plot_hubbard_molecule
