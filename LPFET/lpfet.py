@@ -13,6 +13,7 @@ import networkx as nx
 
 COMPENSATION_1_RATIO = 0.75  # for the Molecule.update_mu_hxc
 
+
 def change_indices(array_inp: np.array, site_id: int):
     array = np.copy(array_inp)
     if site_id != 0:
@@ -23,6 +24,7 @@ def change_indices(array_inp: np.array, site_id: int):
         elif array_inp.ndim == 1:
             array[[0, site_id]] = array[[site_id, 0]]
     return array
+
 
 def log_calculate_ks_decorator(func):
     """
@@ -113,7 +115,7 @@ class Molecule:
 
         self.density_progress = []  # This object is used for gathering changes in the density over iterations
         self.mu_hxc_progress = []
-        
+
         self.iteration_i = 0
         self.oscillation_correction_dict = dict()
 
@@ -138,7 +140,7 @@ class Molecule:
             self.density_progress.append(self.n_ks.copy())
             self.CASCI(oscillation_compensation)
             self.mu_hxc_progress.append(self.mu_hxc.copy())
-            print(f"Loop {i}", end = ', ')
+            print(f"Loop {i}", end=', ')
             mean_square_difference_density = np.average(np.square(self.n_ks - old_density))
 
             self.log_scl(old_density, mean_square_difference_density, i, tolerance, num_iter)
@@ -218,19 +220,19 @@ class Molecule:
                 index = self.equiv_atom_groups[site_group][0]
                 mu_minus_2 = self.mu_hxc_progress[-2][index]
                 mu_minus_1 = self.mu_hxc_progress[-1][index]
-                if (mu_minus_2 - mu_minus_1) * (mu_minus_1 - mu_imp) < 0 and\
+                if (mu_minus_2 - mu_minus_1) * (mu_minus_1 - mu_imp) < 0 and \
                         abs(mu_minus_2 - mu_minus_1) * 0.75 < abs(mu_minus_1 - mu_imp):
                     # First statement means that potential correction turned direction and second means that it is large
                     new_mu_imp = mu_minus_1 + (mu_imp - mu_minus_1) * COMPENSATION_1_RATIO
                     print(f'{mu_minus_2:.2f}->{mu_minus_1:.2f}->{new_mu_imp:.2f}!={mu_imp:.2f}', end=', ')
                     mu_imp = new_mu_imp
-                    self.oscillation_correction_dict[(self.iteration_i, index)] = (mu_minus_2, mu_minus_1, mu_imp, new_mu_imp)
+                    self.oscillation_correction_dict[(self.iteration_i, index)] = (
+                    mu_minus_2, mu_minus_1, mu_imp, new_mu_imp)
                 for every_site_id in self.equiv_atom_groups[site_group]:
                     self.mu_hxc[every_site_id] = mu_imp
         if oscillation_compensation == 0:
             for every_site_id in self.equiv_atom_groups[site_group]:
                 self.mu_hxc[every_site_id] = mu_imp
-
 
     def compare_densities_FCI(self, pass_object=False):
         if type(pass_object) != bool:
@@ -296,7 +298,8 @@ class Molecule:
 
     def plot_hubbard_molecule(self):
         G = nx.Graph()
-        colors = ['lightgrey', 'mistyrose', 'lightcyan', 'thistle', 'springgreen', 'yellow', 'cyan', 'magenta', 'orange']
+        colors = ['lightgrey', 'mistyrose', 'lightcyan', 'thistle', 'springgreen', 'yellow', 'cyan', 'magenta',
+                  'orange']
         color_map = []
         labeldict = {}
         edge_labels = dict()
@@ -341,12 +344,13 @@ class Molecule:
         self.v_ext = np.array((), dtype=np.float64)
         self.equiv_atom_groups = dict()
         self.mu_hxc = np.zeros(self.Ns, dtype=np.float64)  # Hartree exchange correlation potential
-        self.report_string += f'\n{"#" * 50 }\nClear of data! From now on There is a new object \n' \
-                              f'{"#" * 50 }\n\nObject (still) with {self.Ns} sites and {self.Ne} electrons\n'
+        self.report_string += f'\n{"#" * 50}\nClear of data! From now on There is a new object \n' \
+                              f'{"#" * 50}\n\nObject (still) with {self.Ns} sites and {self.Ne} electrons\n'
         self.density_progress = []  # This object is used for gathering changes in the density over iterations
         self.mu_hxc_progress = []
-        
+
         self.oscillation_correction_dict = dict()
+
 
 def cost_function_CASCI(mu_imp, embedded_mol, h_tilde_dimer, u_0_dimer, desired_density):
     mu_imp = mu_imp[0]
@@ -357,15 +361,16 @@ def cost_function_CASCI(mu_imp, embedded_mol, h_tilde_dimer, u_0_dimer, desired_
     density_dimer = Quant_NBody.Build_One_RDM_alpha(embedded_mol.WFT_0, embedded_mol.a_dagger_a)
     return (density_dimer[0, 0] - desired_density) ** 2
 
+
 def see_landscape_ruggedness(embedded_mol, h_tilde_dimer, u_0_dimer, goal_density=False, optimized_potential=False,
-                             num_dim=1, arange=(-2, 2 + 0.1 , 0.1)):
+                             num_dim=1, arange=(-2, 2 + 0.1, 0.1)):
     if num_dim == 1:
         x = np.arange(*arange)
         y = []
         for mu_imp in x:
             abs_error = np.sqrt(cost_function_CASCI([mu_imp], embedded_mol, h_tilde_dimer, u_0_dimer, 0))
             y.append(abs_error)
-        fig, ax = plt.subplots(1,1)
+        fig, ax = plt.subplots(1, 1)
         ax.plot(x, y)
         if goal_density:
             plt.hlines(goal_density, *ax.get_xlim(), label="Goal density")
@@ -373,7 +378,8 @@ def see_landscape_ruggedness(embedded_mol, h_tilde_dimer, u_0_dimer, goal_densit
             plt.vlines(optimized_potential, *ax.get_ylim(), label='return of optimizer')
         string1 = f"{datetime.now().strftime('%d_%H_%M_%S_%f')}"
         ax.set_title(string1)
-        fig.savefig("results/" + string1+".png")
+        fig.savefig("results/" + string1 + ".png")
+
 
 def generate_from_graph(sites, connections):
     """
