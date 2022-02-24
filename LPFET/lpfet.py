@@ -181,11 +181,13 @@ class Molecule:
             y_a_correct_imp = change_indices(self.y_a, site_id)
             t_correct_imp = change_indices(self.t, site_id)
             v_ext_correct_imp = change_indices(self.v_ext, site_id)
+            mu_hxc_correct_imp = change_indices(self.mu_hxc, site_id)
+            mu_s_correct_imp = change_indices(self.mu_s, site_id)
 
             P, v = Quant_NBody.Householder_transformation(y_a_correct_imp)
-            h_tilde = P @ (t_correct_imp + np.diag(v_ext_correct_imp)) @ P
-            # TODO: Ask Fromager how should this be!!!
-
+            h_tilde = P @ (t_correct_imp - np.diag(mu_s_correct_imp)) @ P
+            
+            h_tilde[0,0] += mu_hxc_correct_imp[0]
             h_tilde_dimer = h_tilde[:2, :2]
             u_0_dimer = np.zeros((2, 2, 2, 2), dtype=np.float64)
             u_0_dimer[0, 0, 0, 0] += self.u[site_id]
