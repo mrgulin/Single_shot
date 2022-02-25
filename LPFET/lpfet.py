@@ -2,7 +2,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 import scipy.optimize as sc_opt
 from datetime import datetime
-
+# For plotting of the molecule (if you don't need this you can delete Molecule.plot_hubbard_molecule
+# and this import statements
+import pandas as pd
+import networkx as nx
 import sys
 sys.path.append('../')
 import essentials
@@ -10,10 +13,6 @@ import Quant_NBody
 import class_Quant_NBody
 from essentials import OUTPUT_SEPARATOR, OUTPUT_FORMATTING_NUMBER, print_matrix, generate_1rdm
 
-# For plotting of the molecule (if you don't need this you can delete Molecule.plot_hubbard_molecule
-# and this import statements
-import pandas as pd
-import networkx as nx
 
 COMPENSATION_1_RATIO = 0.75  # for the Molecule.update_v_hxc
 
@@ -165,7 +164,7 @@ class Molecule:
 
     @log_calculate_ks_decorator
     def calculate_ks(self):
-        self.v = self.v_hxc + self.v_ext
+        self.v_s = self.v_hxc + self.v_ext
         self.h_ks = self.t + np.diag(self.v_s)
         self.epsilon_s, self.wf_ks = np.linalg.eigh(self.h_ks, 'U')
         self.y_a = generate_1rdm(self.Ns, self.Ne, self.wf_ks)
@@ -186,8 +185,8 @@ class Molecule:
 
             P, v = Quant_NBody.Householder_transformation(y_a_correct_imp)
             h_tilde = P @ (t_correct_imp + np.diag(v_s_correct_imp)) @ P
-            
             h_tilde[0, 0] -= v_hxc_correct_imp[0]
+
             h_tilde_dimer = h_tilde[:2, :2]
             u_0_dimer = np.zeros((2, 2, 2, 2), dtype=np.float64)
             u_0_dimer[0, 0, 0, 0] += self.u[site_id]
