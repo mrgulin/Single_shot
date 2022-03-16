@@ -7,10 +7,10 @@ from datetime import datetime
 import pandas as pd
 import networkx as nx
 import sys
-sys.path.append('../')
+sys.path.extend(['/mnt/c/Users/tinc9/Documents/CNRS-offline/', '../'])
 import essentials
-import Quant_NBody
-import class_Quant_NBody
+import Quant_NBody  # Folder Quant_NBody has to be in the sys.path or installed as package.
+import Quant_NBody.class_Quant_NBody as class_Quant_NBody
 from essentials import OUTPUT_SEPARATOR, OUTPUT_FORMATTING_NUMBER, print_matrix, generate_1rdm
 
 
@@ -183,7 +183,7 @@ class Molecule:
             v_hxc_correct_imp = change_indices(self.v_hxc, site_id)
             v_s_correct_imp = change_indices(self.v_s, site_id)
 
-            P, v = Quant_NBody.Householder_transformation(y_a_correct_imp)
+            P, v = Quant_NBody.householder_transformation(y_a_correct_imp)
             h_tilde = P @ (t_correct_imp + np.diag(v_s_correct_imp)) @ P
             h_tilde[0, 0] -= v_hxc_correct_imp[0]
 
@@ -250,7 +250,7 @@ class Molecule:
             u_4d[i, i, i, i] = self.u[i]
         mol_full.build_hamiltonian_fermi_hubbard(self.t + np.diag(self.v_ext), u_4d)
         mol_full.diagonalize_hamiltonian()
-        y_ab = mol_full.calculate_1RDM_tot()
+        y_ab = mol_full.calculate_1rdm_tot()
         print("FCI densities (per spin):", y_ab.diagonal() / 2)
         return y_ab, mol_full
 
@@ -363,7 +363,7 @@ def cost_function_CASCI(mu_imp, embedded_mol, h_tilde_dimer, u_0_dimer, desired_
     embedded_mol.build_hamiltonian_fermi_hubbard(h_tilde_dimer + mu_imp_array, u_0_dimer)
     embedded_mol.diagonalize_hamiltonian()
 
-    density_dimer = Quant_NBody.Build_One_RDM_alpha(embedded_mol.WFT_0, embedded_mol.a_dagger_a)
+    density_dimer = Quant_NBody.build_1rdm_alpha(embedded_mol.WFT_0, embedded_mol.a_dagger_a)
     return (density_dimer[0, 0] - desired_density) ** 2
 
 
