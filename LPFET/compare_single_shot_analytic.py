@@ -1,6 +1,6 @@
 from single_shot import *
-import LPFET.class_Quant_NBody
-import Quant_NBody
+import LPFET.class_Quant_NBody_feb_2022
+import Quant_NBody_feb_2022
 embedded_mol = LPFET.class_Quant_NBody.QuantNBody(2, 2)
 embedded_mol.build_operator_a_dagger_a()
 def CASCI_dimer(gamma, h, u, v_ext):
