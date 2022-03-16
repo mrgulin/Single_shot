@@ -185,7 +185,6 @@ class Molecule:
 
             P, v = Quant_NBody.householder_transformation(y_a_correct_imp)
             h_tilde = P @ (t_correct_imp + np.diag(v_s_correct_imp)) @ P
-            h_tilde[0, 0] -= v_hxc_correct_imp[0]
 
             h_tilde_dimer = h_tilde[:2, :2]
             u_0_dimer = np.zeros((2, 2, 2, 2), dtype=np.float64)
