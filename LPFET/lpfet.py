@@ -15,7 +15,7 @@ from essentials import OUTPUT_SEPARATOR, OUTPUT_FORMATTING_NUMBER, print_matrix,
 
 
 COMPENSATION_1_RATIO = 0.75  # for the Molecule.update_v_hxc
-
+COMPENSATION_MAX_ITER_HISTORY = 4
 
 def change_indices(array_inp: np.array, site_id: int):
     array = np.copy(array_inp)
@@ -190,7 +190,7 @@ class Molecule:
             u_0_dimer = np.zeros((2, 2, 2, 2), dtype=np.float64)
             u_0_dimer[0, 0, 0, 0] += self.u[site_id]
             # h_tilde_dimer[0,0] += self.v_ext[site_id]
-            mu_imp = - self.v_hxc[[site_id]]  # Double parenthesis so I keep array, in future this will be list of
+            mu_imp = self.v_hxc[[site_id]]  # Double parenthesis so I keep array, in future this will be list of
             # indices for block householder
 
             self.log_CASCI(site_id, y_a_correct_imp, P, v, h_tilde, h_tilde_dimer)
@@ -219,7 +219,7 @@ class Molecule:
     def update_v_hxc(self, site_group, mu_imp, oscillation_compensation):
         if oscillation_compensation == 1:
             if len(self.v_hxc_progress) < 2:
-                oscillation_compensation = 0
+                pass
             else:
                 index = self.equiv_atom_groups[site_group][0]
                 mu_minus_2 = - self.v_hxc_progress[-2][index]
@@ -232,11 +232,35 @@ class Molecule:
                     mu_imp = new_mu_imp
                     self.oscillation_correction_dict[(self.iteration_i, index)] = (
                     mu_minus_2, mu_minus_1, mu_imp, new_mu_imp)
-                for every_site_id in self.equiv_atom_groups[site_group]:
-                    self.v_hxc[every_site_id] = -mu_imp
-        if oscillation_compensation == 0:
-            for every_site_id in self.equiv_atom_groups[site_group]:
-                self.v_hxc[every_site_id] = -mu_imp
+        elif oscillation_compensation == 2:
+            if len(self.v_hxc_progress) < 2:
+                pass
+            else:
+                index = self.equiv_atom_groups[site_group][0]
+                mu_minus_2 = self.v_hxc_progress[-2][index]
+                mu_minus_1 = self.v_hxc_progress[-1][index]
+                if mu_imp - mu_minus_1 > 0:
+                    f_counter = np.argmin
+                    f_same = np.argmax
+                else:
+                    f_counter = np.argmax
+                    f_same = np.argmin
+                cur_iter_num = len(self.v_hxc_progress)
+                range_list = range(max(cur_iter_num - COMPENSATION_MAX_ITER_HISTORY, 1), cur_iter_num)
+                pml = [self.v_hxc_progress[i][index] for i in range_list]  # Previous mu list
+                mu_counter = f_counter(pml)
+                mu_same = f_same(pml)
+                if (abs(pml[mu_counter] - pml[mu_same]) * 0.75 < abs(mu_minus_1 - mu_imp)) and \
+                        ((mu_counter - mu_same) > 0):
+                    # First statement means that potential correction turned direction and second means that it is large
+                    new_mu_imp = mu_minus_1 + (mu_imp - mu_minus_1) * COMPENSATION_1_RATIO
+                    print(f'{mu_minus_2:.2f}->{mu_minus_1:.2f}->{new_mu_imp:.2f}!={mu_imp:.2f}', end=', ')
+                    mu_imp = new_mu_imp
+                    self.oscillation_correction_dict[(self.iteration_i, index)] = (
+                        mu_minus_2, mu_minus_1, mu_imp, new_mu_imp)
+
+        for every_site_id in self.equiv_atom_groups[site_group]:
+            self.v_hxc[every_site_id] = mu_imp
 
     def compare_densities_FCI(self, pass_object=False):
         if type(pass_object) != bool:
@@ -359,7 +383,7 @@ class Molecule:
 def cost_function_CASCI(mu_imp, embedded_mol, h_tilde_dimer, u_0_dimer, desired_density):
     mu_imp = mu_imp[0]
     mu_imp_array = np.array([[mu_imp, 0], [0, 0]])
-    embedded_mol.build_hamiltonian_fermi_hubbard(h_tilde_dimer + mu_imp_array, u_0_dimer)
+    embedded_mol.build_hamiltonian_fermi_hubbard(h_tilde_dimer - mu_imp_array, u_0_dimer)
     embedded_mol.diagonalize_hamiltonian()
 
     density_dimer = Quant_NBody.build_1rdm_alpha(embedded_mol.WFT_0, embedded_mol.a_dagger_a)
