@@ -136,6 +136,13 @@ class Molecule:
         self.u = u
         self.t = t
         self.v_ext = v_ext
+        if 0 not in equiv_atom_group_list[0]:
+            for i in range(len(equiv_atom_group_list)):
+                if 0 in equiv_atom_group_list[i]:
+                    temp_var = equiv_atom_group_list[0].copy()
+                    equiv_atom_group_list[0] = equiv_atom_group_list[i].copy()
+                    equiv_atom_group_list[i] = temp_var
+                    break
         for index, item in enumerate(equiv_atom_group_list):
             self.equiv_atom_groups[index] = tuple(item)
 
@@ -179,9 +186,13 @@ class Molecule:
 
     def CASCI(self, oscillation_compensation=0):
         self.report_string += "\tEntered CASCI\n"
+        first_iteration = True
         for site_group in self.equiv_atom_groups.keys():
             self.report_string += f"\t\tGroup {site_group} with sites {self.equiv_atom_groups[site_group]}\n"
             site_id = self.equiv_atom_groups[site_group][0]
+            if first_iteration:
+                if 0 not in self.equiv_atom_groups[site_group]:
+                    raise Exception("Unexpected behaviour: First impurity site should have been the 0th site")
 
             # Householder transforms impurity on index 0 so we have to make sure that impurity is on index 0:
             y_a_correct_imp = change_indices(self.y_a, site_id)
@@ -229,6 +240,8 @@ class Molecule:
             for every_site_id in self.equiv_atom_groups[site_group]:
                 self.kinetic_contributions[every_site_id] = 2 * h_tilde[1, 0] * self.embedded_mol.one_rdm[1, 0]
                 self.onsite_repulsion[every_site_id] = on_site_repulsion_i
+
+            first_iteration = False
 
         self.report_string += f'\t\tHxc chemical potential in the end of a cycle:\n\t\t'
         temp1 = ['{num:{dec}}'.format(num=cell, dec=OUTPUT_FORMATTING_NUMBER) for cell in self.v_hxc]
