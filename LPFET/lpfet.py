@@ -7,6 +7,7 @@ from datetime import datetime
 import pandas as pd
 import networkx as nx
 import sys
+
 sys.path.extend(['/mnt/c/Users/tinc9/Documents/CNRS-offline/', '../'])
 import essentials
 import Quant_NBody  # Folder Quant_NBody has to be in the sys.path or installed as package.
@@ -16,6 +17,7 @@ from essentials import OUTPUT_SEPARATOR, OUTPUT_FORMATTING_NUMBER, print_matrix,
 
 COMPENSATION_1_RATIO = 0.75  # for the Molecule.update_v_hxc
 COMPENSATION_MAX_ITER_HISTORY = 4
+
 
 def change_indices(array_inp: np.array, site_id: int):
     array = np.copy(array_inp)
