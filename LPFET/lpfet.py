@@ -14,7 +14,6 @@ import Quant_NBody  # Folder Quant_NBody has to be in the sys.path or installed 
 import Quant_NBody.class_Quant_NBody as class_Quant_NBody
 from essentials import OUTPUT_SEPARATOR, OUTPUT_FORMATTING_NUMBER, print_matrix, generate_1rdm
 
-
 COMPENSATION_1_RATIO = 0.75  # for the Molecule.update_v_hxc
 COMPENSATION_MAX_ITER_HISTORY = 4
 
@@ -110,6 +109,12 @@ class Molecule:
         self.epsilon_s = np.array((), dtype=np.float64)  # Kohn-Sham energies
         self.n_ks = np.array((), dtype=np.float64)  # Densities of KS sysyem
         self.v_hxc = np.zeros(self.Ns, dtype=np.float64)  # Hartree exchange correlation potential
+
+        # Energy
+        self.kinetic_contributions = np.zeros(self.Ns, dtype=np.float64)
+        # This is where \hat t^{(i)} are going to be written
+        self.onsite_repulsion = np.zeros(self.Ns, dtype=np.float64)
+        self.energy_contributions = tuple()
 
         # Quant_NBody objects
         # self.whole_mol = class_Quant_NBody.QuantNBody(self.Ns, self.Ne)
@@ -214,6 +219,17 @@ class Molecule:
 
             self.update_v_hxc(site_group, mu_imp, oscillation_compensation)
 
+            # Kinetic contributions
+            # kinetic_contribution = 2 * (t_i_tilde[0, 0] * self.embedded_mol.one_rdm[0, 0] +
+            #                             t_i_tilde[1, 0] * self.embedded_mol.one_rdm[1, 0])
+            # print(t_i_tilde[0, 0] * self.embedded_mol.one_rdm[0, 0],
+            #       t_i_tilde[1, 0] * self.embedded_mol.one_rdm[0, 1],f"->{t_i_tilde[1, 0] - h_tilde[1, 0]}<-", h_tilde[1, 0])
+
+            on_site_repulsion_i = np.sum(self.embedded_mol.calculate_2rdm_fh(index=0) * u_0_dimer)
+            for every_site_id in self.equiv_atom_groups[site_group]:
+                self.kinetic_contributions[every_site_id] = 2 * h_tilde[1, 0] * self.embedded_mol.one_rdm[1, 0]
+                self.onsite_repulsion[every_site_id] = on_site_repulsion_i
+
         self.report_string += f'\t\tHxc chemical potential in the end of a cycle:\n\t\t'
         temp1 = ['{num:{dec}}'.format(num=cell, dec=OUTPUT_FORMATTING_NUMBER) for cell in self.v_hxc]
         self.report_string += f'{OUTPUT_SEPARATOR}'.join(temp1) + "\n"
@@ -233,7 +249,7 @@ class Molecule:
                     print(f'{mu_minus_2:.2f}->{mu_minus_1:.2f}->{new_mu_imp:.2f}!={mu_imp:.2f}', end=', ')
                     mu_imp = new_mu_imp
                     self.oscillation_correction_dict[(self.iteration_i, index)] = (
-                    mu_minus_2, mu_minus_1, mu_imp, new_mu_imp)
+                        mu_minus_2, mu_minus_1, mu_imp, new_mu_imp)
         elif oscillation_compensation == 2:
             if len(self.v_hxc_progress) < 2:
                 pass
@@ -264,6 +280,24 @@ class Molecule:
         for every_site_id in self.equiv_atom_groups[site_group]:
             self.v_hxc[every_site_id] = mu_imp
 
+    def calculate_energy(self, silent=False):
+        kinetic_contribution = np.sum(self.kinetic_contributions)
+        v_ext_contribution = np.sum(2 * self.v_ext * self.n_ks)
+        u_contribution = np.sum(self.onsite_repulsion)
+        total_energy = kinetic_contribution + v_ext_contribution + u_contribution
+        self.energy_contributions = (total_energy, kinetic_contribution, v_ext_contribution,
+                                     u_contribution)
+        if not silent:
+            print(f'\n{"site":30s}{" ".join([f"{i:9d}" for i in range(self.Ns)])}{"total":>12s}\n{"Kinetic energy":30s}'
+                  f'{" ".join([f"{i:9.4f}" for i in self.kinetic_contributions])}{kinetic_contribution:12.7f}\n'
+                  f'{"External potential energy":30s}{" ".join([f"{i:9.4f}" for i in 2 * self.v_ext * self.n_ks])}'
+                  f'{v_ext_contribution:12.7f}\n{"On-site repulsion":30s}'
+                  f'{" ".join([f"{i:9.4f}" for i in self.onsite_repulsion])}{u_contribution:12.7f}\n{"Occupations":30s}'
+                  f'{" ".join([f"{i:9.4f}" for i in self.n_ks * 2])}{np.sum(self.n_ks) * 2:12.7f}')
+            print(f'{"_" * 20}\nTotal energy:{total_energy}')
+
+        return total_energy
+
     def compare_densities_FCI(self, pass_object=False):
         if type(pass_object) != bool:
             mol_full = pass_object
@@ -275,9 +309,22 @@ class Molecule:
             u_4d[i, i, i, i] = self.u[i]
         mol_full.build_hamiltonian_fermi_hubbard(self.t + np.diag(self.v_ext), u_4d)
         mol_full.diagonalize_hamiltonian()
-        y_ab = mol_full.calculate_1rdm_tot()
-        print("FCI densities (per spin):", y_ab.diagonal() / 2)
-        return y_ab, mol_full
+        y_ab = mol_full.calculate_1rdm()
+        densities = y_ab.diagonal()
+        kinetic_contribution = np.sum(y_ab * self.t) * 2
+        v_ext_contribution = np.sum(2 * self.v_ext * densities)
+        total_energy = mol_full.ei_val[0]
+        # u_contribution = np.sum(u_4d * mol_full.calculate_2rdm_fh(index=0))
+        # total_energy = kinetic_contribution + v_ext_contribution + u_contribution
+        # # Upper calculation took a lot of time so because there numbers should be the same I can avoid
+        # # calculation of 2RDM
+        u_contribution = total_energy - kinetic_contribution - v_ext_contribution
+
+
+        print("FCI densities (per spin):", densities)
+        print(f'Eigenvalue energy: {mol_full.ei_val[0]}, calculated from contributions: {total_energy}')
+        return y_ab, mol_full, (total_energy, kinetic_contribution, v_ext_contribution,
+                                u_contribution)
 
     def plot_density_evolution(self):
         self.density_progress = np.array(self.density_progress)
