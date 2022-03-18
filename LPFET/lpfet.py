@@ -435,7 +435,7 @@ def cost_function_CASCI(mu_imp, embedded_mol, h_tilde_dimer, u_0_dimer, desired_
     embedded_mol.build_hamiltonian_fermi_hubbard(h_tilde_dimer - mu_imp_array, u_0_dimer)
     embedded_mol.diagonalize_hamiltonian()
 
-    density_dimer = Quant_NBody.build_1rdm_alpha(embedded_mol.WFT_0, embedded_mol.a_dagger_a)
+    density_dimer = embedded_mol.calculate_1rdm(index=0)
     return (density_dimer[0, 0] - desired_density) ** 2
 
 
