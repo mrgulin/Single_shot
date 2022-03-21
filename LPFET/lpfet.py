@@ -110,6 +110,7 @@ class Molecule:
         self.epsilon_s = np.array((), dtype=np.float64)  # Kohn-Sham energies
         self.n_ks = np.array((), dtype=np.float64)  # Densities of KS sysyem
         self.v_hxc = np.zeros(self.Ns, dtype=np.float64)  # Hartree exchange correlation potential
+        self.imp_potential = np.zeros(self.Ns, dtype=np.float64)
 
         # Energy
         self.kinetic_contributions = np.zeros(self.Ns, dtype=np.float64)
@@ -239,7 +240,7 @@ class Molecule:
             # print(t_i_tilde[0, 0] * self.embedded_mol.one_rdm[0, 0],
             #       t_i_tilde[1, 0] * self.embedded_mol.one_rdm[0, 1],f"->{t_i_tilde[1, 0] - h_tilde[1, 0]}<-", h_tilde[1, 0])
 
-            on_site_repulsion_i = np.sum(self.embedded_mol.calculate_2rdm_fh(index=0) * u_0_dimer)
+            on_site_repulsion_i = self.embedded_mol.calculate_2rdm_fh(index=0)[0, 0, 0, 0] * u_0_dimer[0, 0, 0, 0]
             for every_site_id in self.equiv_atom_groups[site_group]:
                 self.kinetic_contributions[every_site_id] = 2 * h_tilde[1, 0] * self.embedded_mol.one_rdm[1, 0]
                 self.onsite_repulsion[every_site_id] = on_site_repulsion_i
