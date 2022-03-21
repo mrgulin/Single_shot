@@ -215,7 +215,7 @@ class Molecule:
 
             opt_v_imp_obj = sc_opt.minimize(cost_function_CASCI, mu_imp,
                                             args=(self.embedded_mol, h_tilde_dimer, u_0_dimer, self.n_ks[site_id]),
-                                            method='BFGS', tol=1e-2)
+                                            method='BFGS', options={'eps': 1e-5})
             # This minimize cost function (difference between KS occupations and CASCI occupations squared)
             error = opt_v_imp_obj['fun']
             mu_imp = opt_v_imp_obj['x'][0]
