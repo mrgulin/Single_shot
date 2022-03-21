@@ -7,6 +7,7 @@ from datetime import datetime
 import pandas as pd
 import networkx as nx
 import sys
+from sklearn.linear_model import LinearRegression
 
 sys.path.extend(['/mnt/c/Users/tinc9/Documents/CNRS-offline/', '../'])
 import essentials
@@ -248,13 +249,26 @@ class Molecule:
         self.report_string += f'{OUTPUT_SEPARATOR}'.join(temp1) + "\n"
 
     def update_v_hxc(self, site_group, mu_imp, oscillation_compensation):
-        if oscillation_compensation == 1:
-            if len(self.v_hxc_progress) < 2:
-                pass
+        if len(self.v_hxc_progress) < 2:
+            pass
+        else:
+            index = self.equiv_atom_groups[site_group][0]
+            mu_minus_2 = self.v_hxc_progress[-2][index]
+            mu_minus_1 = self.v_hxc_progress[-1][index]
+
+            if mu_imp - mu_minus_1 > 0:
+                f_counter = np.argmin
+                f_same = np.argmax
             else:
-                index = self.equiv_atom_groups[site_group][0]
-                mu_minus_2 = - self.v_hxc_progress[-2][index]
-                mu_minus_1 = - self.v_hxc_progress[-1][index]
+                f_counter = np.argmax
+                f_same = np.argmin
+            cur_iter_num = len(self.v_hxc_progress)
+            pml = [0]
+            for ind1 in range(max(cur_iter_num - COMPENSATION_MAX_ITER_HISTORY, 0), cur_iter_num):
+                pml.append(self.v_hxc_progress[ind1][index])
+            mu_counter = f_counter(pml)
+            mu_same = f_same(pml)
+            if oscillation_compensation == 1:
                 if (mu_minus_2 - mu_minus_1) * (mu_minus_1 - mu_imp) < 0 and \
                         abs(mu_minus_2 - mu_minus_1) * 0.75 < abs(mu_minus_1 - mu_imp):
                     # First statement means that potential correction turned direction and second means that it is large
@@ -263,24 +277,8 @@ class Molecule:
                     mu_imp = new_mu_imp
                     self.oscillation_correction_dict[(self.iteration_i, index)] = (
                         mu_minus_2, mu_minus_1, mu_imp, new_mu_imp)
-        elif oscillation_compensation == 2:
-            if len(self.v_hxc_progress) < 2:
-                pass
-            else:
-                index = self.equiv_atom_groups[site_group][0]
-                mu_minus_2 = self.v_hxc_progress[-2][index]
-                mu_minus_1 = self.v_hxc_progress[-1][index]
-                if mu_imp - mu_minus_1 > 0:
-                    f_counter = np.argmin
-                    f_same = np.argmax
-                else:
-                    f_counter = np.argmax
-                    f_same = np.argmin
-                cur_iter_num = len(self.v_hxc_progress)
-                range_list = range(max(cur_iter_num - COMPENSATION_MAX_ITER_HISTORY, 1), cur_iter_num)
-                pml = [self.v_hxc_progress[i][index] for i in range_list]  # Previous mu list
-                mu_counter = f_counter(pml)
-                mu_same = f_same(pml)
+            elif oscillation_compensation == 2:
+
                 if (abs(pml[mu_counter] - pml[mu_same]) * 0.75 < abs(mu_minus_1 - mu_imp)) and \
                         ((mu_counter - mu_same) > 0):
                     # First statement means that potential correction turned direction and second means that it is large
@@ -289,6 +287,16 @@ class Molecule:
                     mu_imp = new_mu_imp
                     self.oscillation_correction_dict[(self.iteration_i, index)] = (
                         mu_minus_2, mu_minus_1, mu_imp, new_mu_imp)
+            elif oscillation_compensation == 3:
+                pml2 = np.array(pml)
+                x_data = np.arange(len(pml2)).reshape(-1, 1)
+                reg = LinearRegression().fit(x_data, pml2)
+                r2 = reg.score(x_data, pml2)
+                factor1 = r2  # np.exp((r2 - 1) * 3)
+                predicted = reg.predict([x_data[-1]])[0]
+                new_mu_imp = factor1 * mu_imp + (1 - factor1) * predicted
+                print(f'{mu_minus_2:.2f}->{mu_minus_1:.2f}->{new_mu_imp:.2f}!={mu_imp:.2f} ({r2}, {factor1})', end=', ')
+                mu_imp = new_mu_imp
 
         for every_site_id in self.equiv_atom_groups[site_group]:
             self.v_hxc[every_site_id] = mu_imp
