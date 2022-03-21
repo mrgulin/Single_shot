@@ -130,6 +130,8 @@ class Molecule:
         self.iteration_i = 0
         self.oscillation_correction_dict = dict()
 
+        self.h_tilde_dimer = dict()
+
     @log_add_parameters_decorator
     def add_parameters(self, u, t, v_ext, equiv_atom_group_list):
         if len(u) != self.Ns or len(t) != self.Ns or len(v_ext) != self.Ns:
@@ -213,7 +215,7 @@ class Molecule:
             # indices for block householder
 
             self.log_CASCI(site_id, y_a_correct_imp, P, v, h_tilde, h_tilde_dimer)
-
+            self.h_tilde_dimer[site_group] = h_tilde_dimer
             opt_v_imp_obj = sc_opt.minimize(cost_function_CASCI, mu_imp,
                                             args=(self.embedded_mol, h_tilde_dimer, u_0_dimer, self.n_ks[site_id]),
                                             method='BFGS', options={'eps': 1e-5})
@@ -241,6 +243,7 @@ class Molecule:
             for every_site_id in self.equiv_atom_groups[site_group]:
                 self.kinetic_contributions[every_site_id] = 2 * h_tilde[1, 0] * self.embedded_mol.one_rdm[1, 0]
                 self.onsite_repulsion[every_site_id] = on_site_repulsion_i
+                self.imp_potential[every_site_id] = mu_imp
 
             first_iteration = False
 
