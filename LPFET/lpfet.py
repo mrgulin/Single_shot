@@ -509,16 +509,24 @@ def generate_from_graph(sites, connections):
 
 
 if __name__ == "__main__":
-    pmv = 0.1
-    mol1 = Molecule(6, 6, f'ring6_2sites_{pmv}')
-
-    t, v_ext, u = generate_from_graph(
-        {0: {'v': -pmv, 'U': 1}, 1: {'v': pmv, 'U': 1}, 2: {'v': pmv, 'U': 1}, 3: {'v': -pmv, 'U': 1},
-         4: {'v': pmv, 'U': 1}, 5: {'v': pmv, 'U': 1}},
-        {(0, 1): 1, (1, 2): 1, (2, 3): 1, (3, 4): 1, (4, 5): 1, (0, 5): 1})
-    mol1.add_parameters(u, t, v_ext, [[0, 3], [1, 2, 4, 5]])
-    mol1.clear_object("New object :)")
-    mol1.add_parameters(u, t, v_ext, [[0, 3], [1, 2, 4, 5]])
-    # mol1.plot_hubbard_molecule()
-    # mol1.self_consistent_loop()
-    # y_real, mol_full = mol1.compare_densities_FCI()
+    i = 0.05
+    U_ = 1
+    name = 'chain1'
+    mol1 = Molecule(6, 6, name)
+    mol_full = class_Quant_NBody.QuantNBody(6, 6)
+    mol_full.build_operator_a_dagger_a()
+    first = False
+    pmv = i
+    nodes_dict = dict()
+    edges_dict = dict()
+    eq_list = []
+    for j in range(6):
+        nodes_dict[j] = {'v': (j - 2.5) * i, 'U': 1}
+        if j != 5:
+            edges_dict[(j, j + 1)] = 1
+        eq_list.append([j])
+    t, v_ext, u = generate_from_graph(nodes_dict, edges_dict)
+    mol1.add_parameters(u, t, v_ext, eq_list)
+    mol1.self_consistent_loop(num_iter=30, tolerance=1E-6, oscillation_compensation=2)
+    mol1.calculate_energy()
+    y_ab, mol_fci = mol1.compare_densities_FCI(pass_object=mol_full)
