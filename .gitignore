@@ -134,9 +134,12 @@ dmypy.json
 *Single_loop*
 *Procedure_log*
 LPFET/results/
+LPFET_homogeneous/results
 results_sc/
 Trash/
 
 # exe files and dll files
 *.exe
 *.dll
+
+manim_files/media
