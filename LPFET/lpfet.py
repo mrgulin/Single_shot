@@ -15,8 +15,10 @@ import Quant_NBody  # Folder Quant_NBody has to be in the sys.path or installed 
 import Quant_NBody.class_Quant_NBody as class_Quant_NBody
 from essentials import OUTPUT_SEPARATOR, OUTPUT_FORMATTING_NUMBER, print_matrix, generate_1rdm
 
-COMPENSATION_1_RATIO = 0.75  # for the Molecule.update_v_hxc
+COMPENSATION_1_RATIO = 0.5  # for the Molecule.update_v_hxc
 COMPENSATION_MAX_ITER_HISTORY = 4
+COMPENSATION_5_FACTOR = 1
+COMPENSATION_5_FACTOR2 = 0.5
 
 
 def change_indices(array_inp: np.array, site_id: int):
@@ -133,6 +135,8 @@ class Molecule:
 
         self.h_tilde_dimer = dict()
 
+        self.compensation_ratio_dict = dict()
+
     @log_add_parameters_decorator
     def add_parameters(self, u, t, v_ext, equiv_atom_group_list):
         if len(u) != self.Ns or len(t) != self.Ns or len(v_ext) != self.Ns:
@@ -149,6 +153,7 @@ class Molecule:
                     break
         for index, item in enumerate(equiv_atom_group_list):
             self.equiv_atom_groups[index] = tuple(item)
+            self.compensation_ratio_dict[index] = COMPENSATION_5_FACTOR
 
     def self_consistent_loop(self, num_iter=10, tolerance=0.0001, overwrite_output="", oscillation_compensation=0):
         self.report_string += "self_consistent_loop:\n"
@@ -253,8 +258,21 @@ class Molecule:
         self.report_string += f'{OUTPUT_SEPARATOR}'.join(temp1) + "\n"
 
     def update_v_hxc(self, site_group, mu_imp, oscillation_compensation):
-        if len(self.v_hxc_progress) < 2:
-            pass
+        global COMPENSATION_5_FACTOR
+        if type(oscillation_compensation) == int:
+            oscillation_compensation = [oscillation_compensation]
+        elif len(self.v_hxc_progress) < 2:
+            index = self.equiv_atom_groups[site_group][0]
+            if len(self.v_hxc_progress) == 0:
+                mu_minus_1 = self.v_hxc[index]
+            else:
+                mu_minus_1 = self.v_hxc_progress[-1][index]
+            if 5 in oscillation_compensation:
+                new_mu_imp = mu_minus_1
+                new_mu_imp += np.tanh((mu_imp - mu_minus_1)) / COMPENSATION_5_FACTOR2
+                print(f'(({site_group}): {mu_minus_1:.2f} {new_mu_imp - mu_minus_1:.2f} {mu_imp - mu_minus_1:.2f})',
+                      end=', ')
+                mu_imp = new_mu_imp
         else:
             index = self.equiv_atom_groups[site_group][0]
             mu_minus_2 = self.v_hxc_progress[-2][index]
@@ -272,7 +290,18 @@ class Molecule:
                 pml.append(self.v_hxc_progress[ind1][index])
             mu_counter = f_counter(pml)
             mu_same = f_same(pml)
-            if oscillation_compensation == 1:
+            if 5 in oscillation_compensation:
+                new_mu_imp = mu_minus_1
+                if (mu_minus_2 - mu_minus_1) * (mu_minus_1 - mu_imp) < 0:
+                    self.compensation_ratio_dict[index] += 0.4
+                else:
+                    self.compensation_ratio_dict[index] = max(self.compensation_ratio_dict[index] - 0.1, 1)
+                new_mu_imp += np.tanh((mu_imp - mu_minus_1)) / self.compensation_ratio_dict[index]
+                print(f'(({site_group}): {mu_minus_1:.2f} {new_mu_imp - mu_minus_1:.2f} {mu_imp - mu_minus_1:.2f},'
+                      f' {self.compensation_ratio_dict[index]:.1f})',
+                      end=', ')
+                mu_imp = new_mu_imp
+            if 1 in oscillation_compensation:
                 if (mu_minus_2 - mu_minus_1) * (mu_minus_1 - mu_imp) < 0 and \
                         abs(mu_minus_2 - mu_minus_1) * 0.75 < abs(mu_minus_1 - mu_imp):
                     # First statement means that potential correction turned direction and second means that it is large
@@ -281,9 +310,9 @@ class Molecule:
                     mu_imp = new_mu_imp
                     self.oscillation_correction_dict[(self.iteration_i, index)] = (
                         mu_minus_2, mu_minus_1, mu_imp, new_mu_imp)
-            elif oscillation_compensation == 2:
+            if 2 in oscillation_compensation:
 
-                if (abs(pml[mu_counter] - pml[mu_same]) * 0.75 < abs(mu_minus_1 - mu_imp)) and \
+                if (abs(pml[mu_counter] - pml[mu_same]) * 0.5 < abs(mu_minus_1 - mu_imp)) and \
                         ((mu_counter - mu_same) > 0):
                     # First statement means that potential correction turned direction and second means that it is large
                     new_mu_imp = mu_minus_1 + (mu_imp - mu_minus_1) * COMPENSATION_1_RATIO
@@ -291,7 +320,7 @@ class Molecule:
                     mu_imp = new_mu_imp
                     self.oscillation_correction_dict[(self.iteration_i, index)] = (
                         mu_minus_2, mu_minus_1, mu_imp, new_mu_imp)
-            elif oscillation_compensation == 3:
+            if 3 in oscillation_compensation:
                 pml2 = np.array(pml)
                 x_data = np.arange(len(pml2)).reshape(-1, 1)
                 reg = LinearRegression().fit(x_data, pml2)
@@ -301,6 +330,7 @@ class Molecule:
                 new_mu_imp = factor1 * mu_imp + (1 - factor1) * predicted
                 print(f'{mu_minus_2:.2f}->{mu_minus_1:.2f}->{new_mu_imp:.2f}!={mu_imp:.2f} ({r2}, {factor1})', end=', ')
                 mu_imp = new_mu_imp
+
 
         for every_site_id in self.equiv_atom_groups[site_group]:
             self.v_hxc[every_site_id] = mu_imp
