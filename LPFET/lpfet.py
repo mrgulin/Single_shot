@@ -158,6 +158,7 @@ class Molecule:
     def self_consistent_loop(self, num_iter=10, tolerance=0.0001, overwrite_output="", oscillation_compensation=0):
         self.report_string += "self_consistent_loop:\n"
         old_density = np.inf
+        old_v_hxc = np.inf
         i = 0
         for i in range(num_iter):
             self.iteration_i = i
@@ -168,12 +169,14 @@ class Molecule:
             self.v_hxc_progress.append(self.v_hxc.copy())
             print(f"Loop {i}", end=', ')
             mean_square_difference_density = np.average(np.square(self.n_ks - old_density))
+            max_difference_v_hxc = np.max(np.abs(self.v_hxc - old_v_hxc))
 
             self.log_scl(old_density, mean_square_difference_density, i, tolerance, num_iter)
 
-            if mean_square_difference_density < tolerance:
+            if mean_square_difference_density < tolerance and max_difference_v_hxc < 0.01:
                 break
             old_density = self.n_ks
+            old_v_hxc = self.v_hxc.copy()
         self.report_string += f'Final Hxc chemical potential:\n'
         temp1 = ['{num:{dec}}'.format(num=cell, dec=OUTPUT_FORMATTING_NUMBER) for cell in self.v_hxc]
         self.report_string += f'{OUTPUT_SEPARATOR}'.join(temp1) + "\n"
