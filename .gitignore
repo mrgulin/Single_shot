@@ -143,3 +143,4 @@ Trash/
 *.dll
 
 manim_files/media
+.Rproj.user
