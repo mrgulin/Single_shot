@@ -8,6 +8,7 @@ dimer_opt_list = []
 
 
 def cost_function_CASCI(mu_imp, embedded_mol, h_tilde_dimer, u_0_dimer, desired_density):
+    global dimer_opt_list
     mu_imp = mu_imp[0]
     mu_imp_array = np.array([[mu_imp, 0], [0, 0]])
     embedded_mol.build_hamiltonian_fermi_hubbard(h_tilde_dimer - mu_imp_array, u_0_dimer)
@@ -48,6 +49,8 @@ class MoleculeData(lpfet.Molecule):
         t_correct_imp = lpfet.change_indices(self.t, site_id)
         v_s_correct_imp = lpfet.change_indices(self.v_s, site_id)
 
+        print(f'input side_id: {site_id}', v_s_correct_imp, self.v_s)
+
         self.P, self.v = Quant_NBody.householder_transformation(y_a_correct_imp)
         self.h_tilde = self.P @ (t_correct_imp + np.diag(v_s_correct_imp)) @ self.P
 
@@ -77,194 +80,10 @@ for i in range(4):
     param_dict[i] = {'v': v_ext_amplitude * (-1) ** i, 'U': 3}
 
 
-# Ns = 4
-# v_ext = np.array([1, -1, 1, -1])
-# v_hxc = np.array([0, 0, 0, 0])
-# t = np.array([[0, -1, 0, 1], [-1, 0, -1, 0], [0, -1, 0, -1], [-1, 0, -1, 0]])
-# eig_vec = np.random.random((Ns, Ns))
-# eig_val = np.random.random(Ns)
-# gamma = np.zeros((Ns, Ns))
-#
-# Ne = 4
-
 def transform_into(old_object, new_object):
     return Transform(old_object, new_object.move_to(old_object.get_center()))
 
 
-class MatrixExamples(Scene):
-    def construct(self):
-        m0 = Matrix([[2, "\pi"], [-1, 1]])
-        m1 = Matrix([[2, 0, 4], [-1, 1, 5]],
-                    v_buff=1.3,
-                    h_buff=0.8,
-                    bracket_h_buff=SMALL_BUFF,
-                    bracket_v_buff=SMALL_BUFF,
-                    left_bracket="\{",
-                    right_bracket="\}")
-        m1.add(SurroundingRectangle(m1.get_columns()[1]))
-        m2 = Matrix([[2, 1], [-1, 3]],
-                    element_alignment_corner=UL,
-                    left_bracket="(",
-                    right_bracket=")")
-        m3 = Matrix([[2, 1], [-1, 3]],
-                    left_bracket="\\langle",
-                    right_bracket="\\rangle")
-        m4 = Matrix([[2, 1], [-1, 3]],
-                    ).set_column_colors(RED, GREEN)
-        m5 = Matrix([[2, 1], [-1, 3]],
-                    ).set_row_colors(RED, GREEN)
-        g = Group(
-            m0, m1, m2, m3, m4, m5
-        ).arrange_in_grid(buff=2)
-        self.add(g)
-        tex = Tex(r"\LaTeX", font_size=144)
-        self.add(tex)
-
-
-class OpeningManim(Scene):
-    def construct(self):
-        title = Tex(r"This is some \LaTeX")
-        basel = MathTex(r"\sum_{n=1}^\infty \frac{1}{n^2} = \frac{\pi^2}{6}")
-        VGroup(title, basel).arrange(DOWN)
-        self.play(
-            Write(title),
-            FadeIn(basel, shift=DOWN),
-        )
-        self.wait()
-
-        transform_title = Tex("That was a transform")
-        transform_title.to_corner(UP + LEFT)
-        self.play(
-            Transform(title, transform_title),
-            LaggedStart(*(FadeOut(obj, shift=DOWN) for obj in basel)),
-        )
-        self.wait()
-
-        grid = NumberPlane()
-        grid_title = Tex("This is a grid", font_size=72)
-        grid_title.move_to(transform_title)
-
-        self.add(grid, grid_title)  # Make sure title is on top of grid
-        self.play(
-            FadeOut(title),
-            FadeIn(grid_title, shift=UP),
-            Create(grid, run_time=3, lag_ratio=0.1),
-        )
-        self.wait()
-
-        grid_transform_title = Tex(
-            r"That was a non-linear function \\ applied to the grid",
-        )
-        grid_transform_title.move_to(grid_title, UL)
-        grid.prepare_for_nonlinear_transform()
-        self.play(
-            grid.animate.apply_function(
-                lambda p: p
-                          + np.array(
-                    [
-                        np.sin(p[1]),
-                        np.sin(p[0]),
-                        0,
-                    ],
-                ),
-            ),
-            run_time=3,
-        )
-        self.wait()
-        self.play(Transform(grid_title, grid_transform_title))
-        self.wait()
-
-
-class OpeningManim2(Scene):
-    def construct(self):
-        title = Tex(r"This is some KS Hamiltonian")
-        ks_hamiltonian = MathTex(r"\hat H ^{KS} = \hat T + \hat V^{s}")
-        ks_hamiltonian2 = MathTex(r"\hat H ^{KS} = \hat T + \hat V^{ext} + \hat V^{Hxc}")
-        print(ks_hamiltonian)
-        scene1 = VGroup(title, ks_hamiltonian).arrange(DOWN)
-        scene2 = VGroup(title, ks_hamiltonian2).arrange(DOWN)
-        self.play(
-            Write(title),
-            FadeIn(ks_hamiltonian)
-        )
-        self.wait()
-
-        self.play(
-            ReplacementTransform(scene1, scene2)
-        )
-        self.wait()
-
-        self.play(
-            FadeOut(scene2)
-        )
-        self.wait()
-
-
-class KSHamiltonian(Scene):
-    def construct(self):
-        text_v_ext = MathTex(r"\vec{v}^s")
-        text_v_hxc = MathTex(r"\vec{v}^{Hxc}")
-
-        m_v_ext_vec = Matrix(mol1.v_ext.reshape(-1, 1))
-        m_v_hxc_vec = Matrix(mol1.v_hxc.reshape(-1, 1))
-
-        scene3 = VGroup(VGroup(text_v_ext, m_v_ext_vec).arrange(DOWN, buff=1),
-                        VGroup(text_v_hxc, m_v_hxc_vec).arrange(DOWN, buff=1)).arrange(RIGHT, buff=8)
-        self.play(FadeIn(scene3))
-        self.wait()
-
-        m_v_ext = Matrix(np.diag(mol1.v_ext))
-
-        m_v_ext.move_to(scene3[0][1])
-
-        m_v_hxc = Matrix(np.diag(mol1.v_hxc))
-        m_v_hxc.move_to(scene3[1][1])
-
-        self.play(Transform(scene3[0][1], m_v_ext), Transform(scene3[1][1], m_v_hxc))
-        self.wait()
-
-        m_t = Matrix(t)
-
-        plus1 = MathTex(r"+")
-        plus2 = MathTex(r"+")
-        ks_hamiltonian3 = MathTex(r"H ^{KS} = ")
-
-        scene4 = VGroup(ks_hamiltonian3, m_t, plus1, m_v_ext, plus2, m_v_hxc).arrange(RIGHT, buff=0.2).scale(0.65)
-        text_v_ext2 = scene3[0][0].move_to(scene4[3].get_center() + UP * 2)
-        text_v_hxc2 = scene3[1][0].move_to(scene4[5].get_center() + UP * 2)
-        text_t = MathTex(r"t").move_to(scene4[1].get_center() + UP * 2)
-        self.play(
-            FadeIn(text_t),
-            ReplacementTransform(scene3[0][0], text_v_ext2),
-            ReplacementTransform(scene3[1][0], text_v_hxc2),
-            ReplacementTransform(scene3[0][1], scene4[3]),
-            ReplacementTransform(scene3[1][1], scene4[5]),
-            FadeIn(scene4[0:3]), FadeIn(scene4[4]))
-        self.wait()
-
-        text_v_s = MathTex(r"v^s").move_to(scene4[3].get_center() + UP * 2).scale(0.65)
-        m_v_s = decimal_matrix(np.diag(mol1.v_ext) + np.diag(mol1.v_hxc)).move_to(scene4[3]).scale(0.65)
-        self.play(
-            ReplacementTransform(text_v_ext, text_v_s),
-            ReplacementTransform(m_v_hxc, m_v_s),
-            FadeOut(m_v_ext),
-            FadeOut(plus2),
-            FadeOut(text_v_hxc)
-        )
-
-        text_h_ks_top = MathTex(r"H^{KS}").move_to(scene4[1].get_center() + UP * 2).scale(0.65)
-        m_h_ks = decimal_matrix(np.diag(mol1.v_ext) + np.diag(mol1.v_hxc) + t).move_to(scene4[1]).scale(0.65)
-        self.play(
-            ReplacementTransform(text_v_s, text_h_ks_top),
-            ReplacementTransform(m_v_s, m_h_ks),
-            FadeOut(m_t),
-            FadeOut(text_t),
-            FadeOut(plus1),
-
-        )
-        self.wait()
-        self.play(FadeOut(text_h_ks_top, m_h_ks, ks_hamiltonian3))
-        self.wait()
 
 def generate_empty_graph(input_array):
     # delta_x = np.max(input_array[:, 0]) - np.min(input_array[:, 0])
@@ -321,7 +140,6 @@ class GenerateRing(Scene):
 
 
     def build_molecule_animation(self):
-        self.add(NumberPlane())
         mol1 = self.mol1
         theta = np.pi / 4
         r = 1.5
@@ -337,7 +155,7 @@ class GenerateRing(Scene):
             if index1 != mol1.Ns - 1:
                 edge_param.append(
                     MathTex(f't={mol1.t_dict[(index1, index1 + 1)]}', font_size=23).move_to(
-                        [1.5 * r * np.cos(i + np.pi / mol1.Ns), 1.5 * r * np.sin(i + np.pi / mol1.Ns), 0]))
+                        [1.25 * r * np.cos(i + np.pi / mol1.Ns), 1.25 * r * np.sin(i + np.pi / mol1.Ns), 0]))
 
             if index1 % 2 == 0:
                 points[-1].set_fill(WHITE, opacity=1)
@@ -346,7 +164,7 @@ class GenerateRing(Scene):
         for i in range(len(points) - 1):
             lines.append(Line(points[i].get_center(), points[i + 1].get_center()).set_color(WHITE))
         edge_param.append(
-            Text(f't={mol1.t_dict[(len(points) - 1, 0)]}', font_size=23).move_to(
+            MathTex(f't={mol1.t_dict[(len(points) - 1, 0)]}', font_size=23).move_to(
                 [1.25 * r * np.cos(theta - np.pi / mol1.Ns), 1.25 * r * np.sin(theta - np.pi / mol1.Ns), 0]))
         lines.append(Line(points[0].get_center(), points[-1].get_center()).set_color(WHITE))
         molecule = Group(*lines, *points)
@@ -381,7 +199,7 @@ class GenerateRing(Scene):
             "to zero on all sites. In this presentation I will show second \n"
             "iteration where Hxc potentials are already different from zero.", font_size=20).move_to([0, 0.25, 0])
         vec1 = MathTex(r"\vec v^{Hxc} = ")
-        v_hxc_horizontal = Group(vec1, m_v_hxc_vec).arrange(RIGHT, buff=0).move_to([0, -2, 0])
+        v_hxc_horizontal = Group(vec1, m_v_hxc_vec).arrange(RIGHT, buff=0.2, aligned_edge=DOWN).move_to([0, -2, 0])
         self.play(FadeIn(title, v_hxc_horizontal, text_explanation_hxc))
         self.wait(4)
         self.play(FadeOut(title, title1, text_explanation_hxc), v_hxc_horizontal.animate.move_to([2.7, 3, 0]).scale(0.95))
@@ -476,9 +294,8 @@ class GenerateRing(Scene):
             transform_into(text_v_ext, MathTex(r"\vec{v}^{ext}")),
             transform_into(text_v_hxc, MathTex(r"\vec{v}^{hxc}"))
         )
-        self.wait()
         m_v_ext_main = decimal_matrix(mol1.v_ext.reshape(-1, 1)).move_to([-4, -2, 0])
-        m_v_hxc_main = self.m_v_hxc_bar.copy()
+        m_v_hxc_main = self.m_v_hxc_bar[1].copy()
         self.play(
             FadeIn(m_v_ext_main),
             Transform(m_v_hxc_main, decimal_matrix(mol1.v_hxc.reshape(-1, 1)).move_to([4, -2, 0]))
@@ -493,16 +310,17 @@ class GenerateRing(Scene):
         self.wait()
 
         t = mol1.t
-        m_t = decimal_matrix(t).move_to([-3, -1, 0]).scale(0.65)
-        text_t = MathTex(r"t").move_to([-3, 1, 0])
-        plus1 = MathTex(r"+").move_to([-1, -1, 0])
-        plus2 = MathTex(r"+").move_to([3, -1, 0])
-        ks_hamiltonian3 = MathTex(r"H ^{KS} = ").move_to([-6, -1, 0])
+        ks_hamiltonian3 = MathTex(r"H ^{KS} = ").move_to([-6.1, -1, 0])
+        m_t = decimal_matrix(t).move_to([-3.1, -1, 0])
+        text_t = MathTex(r"t").move_to([-3.1, 1, 0])
+        plus1 = MathTex(r"+").move_to([-1, -1, 0]).scale(0.8)
+        plus2 = MathTex(r"+").move_to([3, -1, 0]).scale(0.8)
+
 
         self.play(
             FadeIn(ks_hamiltonian3, m_t, plus1, plus2, text_t),
-            m_v_hxc_main.animate.move_to([5, -1, 0]).scale(0.65),
-            m_v_ext_main.animate.move_to([1, -1, 0]).scale(0.65),
+            m_v_hxc_main.animate.move_to([5, -1, 0]),
+            m_v_ext_main.animate.move_to([1, -1, 0]),
             text_v_ext.animate.move_to([1, 1, 0]),
             text_v_hxc.animate.move_to([5, 1, 0])
         )
@@ -517,7 +335,7 @@ class GenerateRing(Scene):
         self.play(
             Transform(text_v_hxc, MathTex(r"{H}^{KS}").move_to(text_t)),
             FadeOut(text_t, m_t, plus1),
-            Transform(m_v_hxc_main, decimal_matrix(mol1.h_ks).move_to(m_t).scale(0.65))
+            Transform(m_v_hxc_main, decimal_matrix(mol1.h_ks).move_to(m_t))
         )
         ks_h_matrix = m_v_hxc_main
         self.wait()
@@ -535,8 +353,8 @@ class GenerateRing(Scene):
         self.play(ReplacementTransform(formula1[4], question_vector2))
         text1 = Text('Eigenvector problem', font_size=25).move_to([-1, -3, 0])
         temp1 = '<'
-        text3 = MathTex(r'\ket{\Phi_' + str(0) + '}' + temp1 + r'N_e/2=' + str(mol1.Ne // 2)).move_to([-2, 1, 0])
-        gamma = mol1.y_a
+        text3 = MathTex(r'\ket{\Phi_' + str(0) + '}:' + str(0) + temp1 + r'N_e/2=' + str(mol1.Ne // 2)).move_to([-2, 1, 0])
+        gamma = np.zeros((mol1.Ns, mol1.Ns))
         t_gamma = DecimalMatrix(gamma, element_to_mobject_config={"num_decimal_places": 2}).scale(0.65).move_to(
             [4, -2.5, 0])
         text4 = Text('1RDM').move_to([4, -1, 0])
@@ -551,7 +369,7 @@ class GenerateRing(Scene):
                       transform_into(question_vector2, decimal_matrix(mol1.wf_ks[:, id1].reshape(-1, 1))),
                       transform_into(formula1[3], Text(f"{mol1.epsilon_s[id1]:5.2f}").scale(0.65)),
                       transform_into(text3,
-                                     MathTex(r'\ket{\Phi_' + str(id1) + '}' + temp1 + r' N_e/2=' + str(mol1.Ne // 2)))
+                                     MathTex(r'\ket{\Phi_' + str(id1) + '}:' + str(id1) + temp1 + r' N_e/2=' + str(mol1.Ne // 2)))
                       )
             if id1 < mol1.Ne // 2:
                 wf_mult = question_vector.copy()
@@ -571,11 +389,6 @@ class GenerateRing(Scene):
                           title1, ks_h_matrix, t_gamma, text4))
 
 
-    def construct(self):
-        self.build_molecule_animation()
-        self.animate_ks()
-        self.casci()
-
     def casci(self):
         mol1 = self.mol1
         t_gamma = DecimalMatrix(mol1.y_a, element_to_mobject_config={"num_decimal_places": 2}).scale(0.65).move_to(
@@ -586,7 +399,6 @@ class GenerateRing(Scene):
         text_h_ks = Tex(r'$H^{KS}=$').next_to(t_h_ks, LEFT)
         self.play(FadeIn(t_h_ks, t_gamma, text_h_ks, text_gamma))
 
-        # region CASCI
         title1 = Text(r"CASCI", font_size=45, color=YELLOW).move_to([-3.25, 3, 0])
         self.play(FadeIn(title1))
         first = True
@@ -612,7 +424,7 @@ class GenerateRing(Scene):
             for i in mol1.equivalent_sites[impurity_id]:
                 squared_sites.append(SurroundingRectangle(mobject=self.molecule_scheme[-mol1.Ns + i], color=YELLOW, buff=0.15))
                 self.play(Create(squared_sites[-1]))
-            gamma2 = mol1.y_a
+            gamma2 = mol1.y_a.copy()
             if 0 in mol1.equivalent_sites[impurity_id]:
                 text2 = Text(f"Impurity  is  in  correct  place  for  Householder  transformation.\n"
                              f"We  don't  need  to  change  indices", font_size=20,
@@ -626,7 +438,7 @@ class GenerateRing(Scene):
                              t2c={" is  not ": YELLOW, f" {site_id_old} ": YELLOW}).move_to([-3, 0.5, 0])
                 self.play(FadeIn(text2))
                 self.wait()
-                h_ks2 = mol1.h_ks
+                h_ks2 = mol1.h_ks.copy()
 
                 gamma2[:, [0, site_id_old]] = gamma2[:, [site_id_old, 0]]
                 h_ks2[:, [0, site_id_old]] = h_ks2[:, [site_id_old, 0]]
@@ -635,6 +447,7 @@ class GenerateRing(Scene):
                           transform_into(t_h_ks, DecimalMatrix(h_ks2, element_to_mobject_config={
                               "num_decimal_places": 2}).scale(0.65)))
                 gamma2[[0, site_id_old], :] = gamma2[[site_id_old, 0], :]
+                h_ks2[[0, site_id_old], :] = h_ks2[[site_id_old, 0], :]
                 self.play(transform_into(t_gamma, DecimalMatrix(gamma2, element_to_mobject_config={
                     "num_decimal_places": 2}).scale(0.65)),
                           transform_into(t_h_ks, DecimalMatrix(h_ks2, element_to_mobject_config={
@@ -643,6 +456,7 @@ class GenerateRing(Scene):
             arrow = Arrow([2, -2.5, 0], [0.5, -2.5, 0])
             self.play(Create(arrow))
             mol1.get_access_to_variables_casci(impurity_id)
+            print(f'impurity id: {impurity_id}, ')
             t_P = DecimalMatrix(mol1.P, element_to_mobject_config={"num_decimal_places": 2}).scale(0.65).move_to(
                 [-1.5, -2.5, 0])
             text_P = Tex('P=').next_to(t_P, LEFT)
@@ -684,6 +498,7 @@ class GenerateRing(Scene):
             min_mu_imp = np.min(mol1.dimer_opt_list[:, 0])
             max_mu_imp = np.max(mol1.dimer_opt_list[:, 0])
             desired_density = gamma2[0, 0]
+            print(min_mu_imp, max_mu_imp, desired_density, grid.c2p(min_mu_imp, desired_density, 0),  grid.c2p(max_mu_imp, desired_density, 0))
             line_desired_density = Line(grid.c2p(min_mu_imp, desired_density, 0),
                                         grid.c2p(max_mu_imp, desired_density, 0))
 
@@ -697,17 +512,28 @@ class GenerateRing(Scene):
             text_mu_imp2 = MathTex(r'=\mu^{imp}\longrightarrow v^{Hxc}').move_to([0, -2, 0]).scale(0.75)
             self.play(FadeIn(text_mu_imp1, text_mu_imp2))
             self.wait(1)
-            self.play(FadeOut(text_mu_imp2), ReplacementTransform(text_mu_imp1, self.m_v_hxc_bar[0][0][impurity_id]))
-            self.play(*[self.m_v_hxc_bar[0][0][id].animate.set_value(mol1.mu_imp) for id in mol1.equivalent_sites[impurity_id]])
+            self.play(FadeOut(text_mu_imp2), ReplacementTransform(text_mu_imp1, self.m_v_hxc_bar[1][0][impurity_id]))
+            self.play(*[self.m_v_hxc_bar[1][0][id].animate.set_value(mol1.mu_imp) for id in mol1.equivalent_sites[impurity_id]])
             self.play(FadeOut(t_gamma, dots, grid, grid_x_label, grid_y_label, eq1, lines_to_grid, line_desired_density,
                               *squared_sites, text_h_ks, t_h_ks, text_gamma))
             first = False
         self.play(FadeOut(title1, text1))
         # endregion
 
+    def construct(self):
+        self.build_molecule_animation()
+        self.animate_ks()
+        self.casci()
+        self.continuation()
+
+    def construct2(self):
+        self.build_molecule_static()
+        self.continuation()
 
     def continuation(self):
         mol1 = self.mol1
+
+        # region First screen
         title1 = Text(r"Continuation", font_size=45, color=YELLOW).move_to([-3.25, 3, 0])
         self.play(FadeIn(title1))
 
@@ -720,87 +546,177 @@ class GenerateRing(Scene):
                      font_size=20).move_to([-3, 0.5, 0])
         self.play(FadeIn(text1))
         self.wait(4)
-
-        ax = Axes(x_range=[0, 16], y_range=[0, 1], x_length=7, y_length=4,
-                  x_axis_config={"numbers_to_include": [0, 16, 2], "font_size": 20},
-            y_axis_config={"numbers_to_include": [0, 1, 0.2], "font_size": 20},tips=True)
+        ax = Axes(x_range=[0, 16.5], y_range=[0, 3.2], x_length=7, y_length=4,
+                  x_axis_config={"numbers_to_include": np.arange(0, 16.1, 2), "font_size": 20},
+            y_axis_config={"numbers_to_include": np.arange(0, 3.1, 1), "font_size": 20},tips=False)
         ax.move_to([-3, -1.5, 0])
-        text_x_label = Text('Iteration').scale(0.5).move_to([1, -2.9, 0])
-        text_y_label = MathTex(r'v^{Hxc}').scale(0.7).move_to([-5.5, 0.5, 0])
+        text_x_label = Text('Iteration').scale(0.5).move_to([1, -3.7, 0])
+        text_y_label = MathTex(r'v^{Hxc}').scale(0.7).move_to([-6.5, 1, 0])
         grid_labels = VGroup(text_x_label, text_y_label)
 
         iter_start = 2
         text_density_sq_text = MathTex(
             r'\sum_i \left( n_i^{(' + str(iter_start) + r')}  -  n_i^{(' + str(iter_start - 1) + r')} \right)/N_s=').scale(
             0.8)
-        text_density_sq_num = DecimalNumber(-1).move_to([2, 0.1, 0])
+        text_density_sq_num = DecimalNumber(-1).move_to([2.7, 0.1, 0])
 
         text_density_sq = VGroup(text_density_sq_text, text_density_sq_num).move_to([5, 1, 0]).scale(0.8)
-        text_epsilon = MathTex(r'\varepsilon=1 \cdot 10^{5}').next_to(text_density_sq, DOWN, 0.1).scale(0.8)
+        text_epsilon = MathTex(r'\varepsilon=1 \cdot 10^{-5}').next_to(text_density_sq, DOWN, 0.1).scale(0.8)
 
         t_gamma = DecimalMatrix(mol1.y_a, element_to_mobject_config={"num_decimal_places": 2}).scale(0.65).move_to(
             [5, -2.5, 0])
         text_gamma = Tex(r'$\gamma=$').next_to(t_gamma, LEFT)
         self.play(FadeOut(text1), FadeIn(t_gamma, text_gamma, text_density_sq, text_epsilon, ax, grid_labels))
 
-
-        dot_list = [VGroup([]), VGroup([])]
-        # dots = VGroup(*[Dot(point=grid.c2p(coord[0], coord[1], 0), radius=0.05,
-        #                     color=YELLOW) for coord in mol1.dimer_opt_list])
-        # Dot(point=ax.c2p(0, 0, 0), radius=0.05, color=YELLOW)
-
+        # endregion
+        # region Run proper CASCI function so I can plot points
         mol1.density_progress.append(mol1.n_ks.copy())
         mol1.CASCI(0)
         mol1.v_hxc_progress.append(mol1.v_hxc.copy())
 
+        # endregion
+        # region Make graph of first points
+        dot_list = [VGroup(), VGroup()]
+        line_list = [VGroup(), VGroup()]
+        colors = [RED, YELLOW]
         for point_site in range(2):
             dot_list[point_site] += Dot(point=ax.c2p(0, 0, 0), radius=0.05, color=YELLOW)
-            dot_list[point_site] += Dot(point=ax.c2p(1, mol1.v_hxc_progress[point_site][0], 0), radius=0.05, color=RED)
-            self.play(ShowIncreasingSubsets(dot_list[point_site]))
-            dot_list[point_site].append(
-                Dot(point=ax.c2p(2, mol1.v_hxc_progress[point_site][1], 0), radius=0.05, color=YELLOW))
+            dot_list[point_site] += Dot(point=ax.c2p(1, mol1.v_hxc_progress[point_site][0], 0), radius=0.05, color=colors[point_site])
+            line_list[point_site] += Line(dot_list[point_site][-2], dot_list[point_site][-1], color=colors[point_site])
+            dot_list[point_site] += Dot(point=ax.c2p(2, mol1.v_hxc_progress[point_site][1], 0), radius=0.05,
+                                        color=colors[point_site])
+            line_list[point_site] += Line(dot_list[point_site][-2], dot_list[point_site][-1], color=colors[point_site])
+        self.play(Create(dot_list[0][0]), Create(dot_list[1][0]))
+        self.play(Create(line_list[0][0]), Create(line_list[1][0]), Create(dot_list[0][1]), Create(dot_list[1][1]))
         self.wait(2)
-        text_iteration = Text(f'Iteration {2}', font_size=25).move_to([0, 2.5, 0])
+        text_iteration = Text(f'Iteration {2}', font_size=25).move_to([-5, 1.5, 0])
         sq_diff_val = np.average(np.square(mol1.n_ks - self.old_density))
-        self.play(Transform(self.m_v_hxc_bar[0][0].copy(), dot_list[0][2]),
-                  Transform(self.m_v_hxc_bar[0][1].copy(), dot_list[1][2]),
+        self.play(Transform(self.m_v_hxc_bar[1][0].copy(), dot_list[0][2]),
+                  Transform(self.m_v_hxc_bar[1][1].copy(), dot_list[1][2]),
+                  Create(line_list[0][1]), Create(line_list[1][1]),
                   text_density_sq_num.animate.set_value(sq_diff_val),
                   FadeIn(text_iteration)
                   )
         self.old_density = mol1.n_ks
-        for i in range(3, 6):
-            for point_site in range(2):
-                dot_list[point_site] += Dot(point=ax.c2p(i, mol1.v_hxc_progress[point_site][-1], 0), radius=0.05,
-                                            color=RED)
+        # endregion
+        # region Loop
+        i = 3
+        for i in range(3, 8):
             mol1.calculate_ks()
             mol1.density_progress.append(mol1.n_ks.copy())
             mol1.CASCI(0)
             mol1.v_hxc_progress.append(mol1.v_hxc.copy())
-            text_iteration = Text(f'Iteration {i}', font_size=25).move_to([0, 2.5, 0])
+            for point_site in range(2):
+                dot_list[point_site] += Dot(point=ax.c2p(i, mol1.v_hxc_progress[-1][point_site], 0), radius=0.05,
+                                            color=colors[point_site])
+                line_list[point_site] += Line(dot_list[point_site][-2], dot_list[point_site][-1],
+                                              color=colors[point_site])
+
+
             sq_diff_val = np.average(np.square(mol1.n_ks - self.old_density))
-            self.play(Transform(self.m_v_hxc_bar[0][0].copy(), dot_list[0][2]),
-                      Transform(self.m_v_hxc_bar[0][1].copy(), dot_list[1][2]),
-                      text_density_sq_num.animate.set_value(sq_diff_val),
-                      FadeIn(text_iteration),
-                      Create(dot_list[0][-1]),
-                      Create(dot_list[1][-1]),
-                      transform_into(self.m_v_hxc_bar[0], decimal_matrix([mol1.v_hxc])),
-                      transform_into(t_gamma, decimal_matrix(mol1.y_a))
+            self.play(transform_into(text_iteration, Text(f'Iteration {i}', font_size=25)),
+                      transform_into(t_gamma, decimal_matrix(mol1.y_a)))
+            self.play(transform_into(self.m_v_hxc_bar[1], decimal_matrix([mol1.v_hxc])))
+            self.play(Create(line_list[0][i - 1]), Create(line_list[1][i - 1]),
+                      Transform(self.m_v_hxc_bar[1][0][0].copy(), dot_list[0][i]),
+                      Transform(self.m_v_hxc_bar[1][0][1].copy(), dot_list[1][i]),
+                      text_density_sq_num.animate.set_value(sq_diff_val)
                       )
             self.old_density = mol1.n_ks
             self.wait(1)
 
+        text_convergence = "We can see that Hxc potentials alterante\n " \
+                           "between two values and they are not going\n " \
+                           "to converge by themselves."
+        text_convergence = Text(text_convergence, font_size=20).move_to([-0.2, 1, 0])
+        #                                             0         1         2                 3               4                                     5
+        text_convergence_second = MathTex(r'v_j^{Hxc (i+1)}', '=', r'\mu_j^{imp, (i-1)}', r'+ arctan(', r'\mu_j^{imp, (i)} - \mu_j^{imp, (i-1)}',')').next_to(text_convergence, DOWN, buff=0.2).scale(0.45)
+        text_convergence_g = VGroup(text_convergence, text_convergence_second)
+
+        self.play(FadeIn(text_convergence_g))
+        # region resize point
+        mu_point = dot_list[0][i]
+        mu_minus_1_point = dot_list[0][i-1]
+        position_mu_minus_1 = mu_minus_1_point.get_center()
+        position_mu_minus_1[0] = mu_point.get_center()[0]
+        position_mu = mu_point.get_center()
+        print(mol1.v_hxc_progress)
+        double_arrow = DoubleArrow(position_mu, position_mu_minus_1, buff=0, max_tip_length_to_length_ratio=0.05)
+        text_delta = MathTex('\Delta v=').next_to(double_arrow, RIGHT).scale(0.6)
+        delta_old_number = mol1.v_hxc_progress[-1][0]-mol1.v_hxc_progress[-2][0]
+        delta_old = DecimalNumber(delta_old_number).next_to(text_delta, RIGHT).scale(0.6)
+        mu_minus_1_number = mol1.v_hxc_progress[-2][0]
+        text_mu_minus_1 = DecimalNumber(mu_minus_1_number).scale(0.6)
+        self.play(Create(double_arrow))
+        self.play(FadeIn(delta_old, text_delta))
+        self.play(Transform(text_convergence_second[2], text_mu_minus_1.move_to(text_convergence_second[2])),
+                  Transform(text_convergence_second[4], delta_old.copy().move_to(text_convergence_second[4])))
+        result = mu_minus_1_number + np.arctan(delta_old_number)
+        delta_new = DecimalNumber(result).scale(0.6).move_to(text_convergence_second[0])
+        self.play(Transform(text_convergence_second[0], delta_new))
+        def update_arrow(arrow123):
+            updated_arrow = DoubleArrow(mu_point, arrow123.end, buff=0, max_tip_length_to_length_ratio=0.05)
+            arrow123.become(updated_arrow)
+        self.play(FadeOut(text_convergence_second[0].copy(), target_position=mu_point), delta_old.animate.set_value(result),
+                  mu_point.animate.move_to(ax.c2p(i, result, 0)),
+                  UpdateFromFunc(double_arrow, update_arrow),
+                  delta_old.animate.set_value(np.arctan(delta_old_number)))
+        v_hxc2 = mol1.v_hxc_progress[-2][1] + np.arctan(mol1.v_hxc_progress[-1][1]-mol1.v_hxc_progress[-2][1])
+        self.play(FadeOut(text_convergence_g, double_arrow, text_delta, delta_old))
+        self.play(dot_list[1][i].animate.move_to(ax.c2p(i, v_hxc2, 0)))
+
+
+        mol1.v_hxc = np.array([result, v_hxc2, result, v_hxc2])
+
+        text_with_osc_compensation = Text("With oscillation compensaition", font_size=20).move_to([-1, 1.5, 0])
+        self.play(FadeIn(text_with_osc_compensation))
+        # endregion
+
+        for i in range(8, 15):
+            mol1.calculate_ks()
+            mol1.density_progress.append(mol1.n_ks.copy())
+            mol1.CASCI(5)
+            mol1.v_hxc_progress.append(mol1.v_hxc.copy())
+            for point_site in range(2):
+                dot_list[point_site] += Dot(point=ax.c2p(i, mol1.v_hxc_progress[-1][point_site], 0), radius=0.05,
+                                            color=colors[point_site])
+                line_list[point_site] += Line(dot_list[point_site][-2], dot_list[point_site][-1],
+                                              color=colors[point_site])
+
+
+            sq_diff_val = np.average(np.square(mol1.n_ks - self.old_density))
+            self.play(transform_into(text_iteration, Text(f'Iteration {i}', font_size=25)),
+                      transform_into(t_gamma, decimal_matrix(mol1.y_a)))
+            self.play(transform_into(self.m_v_hxc_bar[1], decimal_matrix([mol1.v_hxc])))
+            self.play(Create(line_list[0][i - 1]), Create(line_list[1][i - 1]),
+                      Transform(self.m_v_hxc_bar[1][0][0].copy(), dot_list[0][i]),
+                      Transform(self.m_v_hxc_bar[1][0][1].copy(), dot_list[1][i]),
+                      text_density_sq_num.animate.set_value(sq_diff_val)
+                      )
+            self.old_density = mol1.n_ks
+            self.wait(1)
+        self.wait(3)
+
+
+
 
 class test2(Scene):
     def construct(self):
-        v_hxc_horizontal = [[1,2,3]]
-        m_v_hxc_vec = decimal_matrix(v_hxc_horizontal)
-        v_hxc_horizontal = Group(Text('hehe'), m_v_hxc_vec).arrange(RIGHT, buff=0).move_to([0, -2, 0])
-        self.add(v_hxc_horizontal)
+        arrow = DoubleArrow(LEFT, RIGHT)
+        dot1 = Dot([0, 0, 0])
+        self.add(arrow, dot1)
+        def update_arrow(arrow, dot_ref=dot1):
+            updated_arrow = DoubleArrow(dot_ref, arrow.end, tip_length=0.0, buff=0)
+            arrow.become(updated_arrow)
 
+        self.play(
+            dot1.animate.move_to([3,3,0]),
+            UpdateFromFunc(arrow, update_arrow, dot_ref=dot1))
+        print(dir(arrow))
 
 
 if __name__ == "__main__":
     from subprocess import call
-
+    # python -m" manim" -p -ql generate_animation.py GenerateRing
     call(["python", "-m", "manim", "-p", "-ql", "generate_animation.py", "GenerateRing"])
+    # call(["python", "-m", "manim", "-p", "-ql", "generate_animation.py", "test2"])
