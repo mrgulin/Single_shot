@@ -8,6 +8,7 @@ import pandas as pd
 import networkx as nx
 import sys
 from sklearn.linear_model import LinearRegression
+from typing import Union
 
 sys.path.extend(['/mnt/c/Users/tinc9/Documents/CNRS-offline/', '../'])
 import essentials
@@ -334,7 +335,6 @@ class Molecule:
                 print(f'{mu_minus_2:.2f}->{mu_minus_1:.2f}->{new_mu_imp:.2f}!={mu_imp:.2f} ({r2}, {factor1})', end=', ')
                 mu_imp = new_mu_imp
 
-
         for every_site_id in self.equiv_atom_groups[site_group]:
             self.v_hxc[every_site_id] = mu_imp
 
@@ -356,7 +356,8 @@ class Molecule:
 
         return total_energy
 
-    def compare_densities_FCI(self, pass_object=False):
+    def compare_densities_FCI(self, pass_object: Union[bool, class_Quant_NBody.QuantNBody] = False,
+                              calculate_per_site=False):
         if type(pass_object) != bool:
             mol_full = pass_object
         else:
@@ -372,15 +373,21 @@ class Molecule:
         kinetic_contribution = np.sum(y_ab * self.t) * 2
         v_ext_contribution = np.sum(2 * self.v_ext * densities)
         total_energy = mol_full.ei_val[0]
-        # u_contribution = np.sum(u_4d * mol_full.calculate_2rdm_fh(index=0))
-        # total_energy = kinetic_contribution + v_ext_contribution + u_contribution
-        # # Upper calculation took a lot of time so because there numbers should be the same I can avoid
-        # # calculation of 2RDM
         u_contribution = total_energy - kinetic_contribution - v_ext_contribution
 
-
+        if calculate_per_site:
+            per_site_array = np.zeros(self.Ns, dtype=[('tot', float), ('kin', float), ('v_ext', float), ('u', float)])
+            on_site_repulsion_array = u_4d * mol_full.calculate_2rdm_fh(index=0)
+            t_multiplied_matrix = y_ab * self.t * 2
+            for site in range(self.Ns):
+                per_site_array[site]['v_ext'] = 2 * self.v_ext[site] * densities[site]
+                per_site_array[site]['u'] = on_site_repulsion_array[site, site, site, site]
+                per_site_array[site]['kin'] = np.sum(t_multiplied_matrix[site])
+                per_site_array[site]['tot'] = sum(per_site_array[site])
+            return y_ab, mol_full, (total_energy, kinetic_contribution, v_ext_contribution,
+                                    u_contribution), per_site_array
         print("FCI densities (per spin):", densities)
-        print(f'Eigenvalue energy: {mol_full.ei_val[0]}, calculated from contributions: {total_energy}')
+        print(f'FCI energy: {mol_full.ei_val[0]}')
         return y_ab, mol_full, (total_energy, kinetic_contribution, v_ext_contribution,
                                 u_contribution)
 
@@ -562,4 +569,4 @@ if __name__ == "__main__":
     mol1.add_parameters(u, t, v_ext, eq_list)
     mol1.self_consistent_loop(num_iter=30, tolerance=1E-6, oscillation_compensation=2)
     mol1.calculate_energy()
-    y_ab, mol_fci = mol1.compare_densities_FCI(pass_object=mol_full)
+    y_ab, mol_fci, contribution_tuple, per_site_energy_array = mol1.compare_densities_FCI(mol_full, True)
