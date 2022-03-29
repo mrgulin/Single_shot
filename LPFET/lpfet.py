@@ -120,6 +120,7 @@ class Molecule:
         # This is where \hat t^{(i)} are going to be written
         self.onsite_repulsion = np.zeros(self.Ns, dtype=np.float64)
         self.energy_contributions = tuple()
+        self.per_site_energy = np.array(())
 
         # Quant_NBody objects
         # self.whole_mol = class_Quant_NBody.QuantNBody(self.Ns, self.Ne)
@@ -339,16 +340,22 @@ class Molecule:
             self.v_hxc[every_site_id] = mu_imp
 
     def calculate_energy(self, silent=False):
-        kinetic_contribution = np.sum(self.kinetic_contributions)
-        v_ext_contribution = np.sum(2 * self.v_ext * self.n_ks)
+        per_site_array = np.zeros(self.Ns, dtype=[('tot', float), ('kin', float), ('v_ext', float), ('u', float)])
+        per_site_array['kin'] = self.kinetic_contributions
+        per_site_array['v_ext'] = 2 * self.v_ext * self.n_ks
+        per_site_array['u'] = self.onsite_repulsion
+        per_site_array['tot'] = np.sum(np.array(per_site_array[['kin', 'v_ext', 'u']].tolist()), axis=1)
+        kinetic_contribution = np.sum(per_site_array['kin'])
+        v_ext_contribution = np.sum(per_site_array['v_ext'])
         u_contribution = np.sum(self.onsite_repulsion)
         total_energy = kinetic_contribution + v_ext_contribution + u_contribution
         self.energy_contributions = (total_energy, kinetic_contribution, v_ext_contribution,
                                      u_contribution)
+        self.per_site_energy = per_site_array
         if not silent:
             print(f'\n{"site":30s}{" ".join([f"{i:9d}" for i in range(self.Ns)])}{"total":>12s}\n{"Kinetic energy":30s}'
                   f'{" ".join([f"{i:9.4f}" for i in self.kinetic_contributions])}{kinetic_contribution:12.7f}\n'
-                  f'{"External potential energy":30s}{" ".join([f"{i:9.4f}" for i in 2 * self.v_ext * self.n_ks])}'
+                  f'{"External potential energy":30s}{" ".join([f"{i:9.4f}" for i in  per_site_array["v_ext"]])}'
                   f'{v_ext_contribution:12.7f}\n{"On-site repulsion":30s}'
                   f'{" ".join([f"{i:9.4f}" for i in self.onsite_repulsion])}{u_contribution:12.7f}\n{"Occupations":30s}'
                   f'{" ".join([f"{i:9.4f}" for i in self.n_ks * 2])}{np.sum(self.n_ks) * 2:12.7f}')
