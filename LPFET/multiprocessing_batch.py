@@ -10,7 +10,7 @@ def chain1_cont_i():
     for electrons in [2, 4, 6, 8, 10]:
         for param_i in [0.5, 1, 1.5, 2]:
             input_list.append((param_i, electrons, 6, 0.5))
-    with Pool() as pool:
+    with Pool(processes=10) as pool:
         L = pool.starmap(calculate_batch.generate_chain_const_i, input_list)
 
 def chain1_cont_u():
@@ -18,7 +18,7 @@ def chain1_cont_u():
     for electrons in [2, 4, 6, 8, 10]:
         for param_u in [2, 4, 6, 8, 10]:
             input_list.append((param_u, electrons, 6))
-    with Pool() as pool:
+    with Pool(processes=10) as pool:
         L = pool.starmap(calculate_batch.generate_chain_const_u, input_list)
 
 
