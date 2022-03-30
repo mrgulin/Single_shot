@@ -169,7 +169,7 @@ class Molecule:
             self.report_string += f"Iteration # = {i}\n"
             self.calculate_ks()
             self.density_progress.append(self.n_ks.copy())
-            self.CASCI(oscillation_compensation)
+            self.casci(oscillation_compensation)
             self.v_hxc_progress.append(self.v_hxc.copy())
             print(f"\nLoop {i}", end=', ')
             mean_square_difference_density = np.average(np.square(self.n_ks - old_density))
@@ -200,7 +200,7 @@ class Molecule:
         self.y_a = generate_1rdm(self.Ns, self.Ne, self.wf_ks)
         self.n_ks = np.copy(self.y_a.diagonal())
 
-    def CASCI(self, oscillation_compensation=0):
+    def casci(self, oscillation_compensation=0):
         self.report_string += "\tEntered CASCI\n"
         first_iteration = True
         for site_group in self.equiv_atom_groups.keys():
@@ -227,12 +227,12 @@ class Molecule:
             mu_imp = self.v_hxc[[site_id]]  # Double parenthesis so I keep array, in future this will be list of
             # indices for block householder
 
-            self.log_CASCI(site_id, y_a_correct_imp, P, v, h_tilde, h_tilde_dimer)
+            self.log_casci(site_id, y_a_correct_imp, P, v, h_tilde, h_tilde_dimer)
             self.h_tilde_dimer[site_group] = h_tilde_dimer
-            opt_v_imp_obj = sc_opt.minimize(cost_function_CASCI, mu_imp,
+            opt_v_imp_obj = sc_opt.minimize(cost_function_casci, mu_imp,
                                             args=(self.embedded_mol, h_tilde_dimer, u_0_dimer, self.n_ks[site_id]),
                                             method='BFGS', options={'eps': 1e-5})
-            # This minimize cost function (difference between KS occupations and CASCI occupations squared)
+            # This minimize cost function (difference between KS occupations and casci occupations squared)
             error = opt_v_imp_obj['fun']
             mu_imp = opt_v_imp_obj['x'][0]
 
@@ -357,7 +357,7 @@ class Molecule:
         if not silent:
             print(f'\n{"site":30s}{" ".join([f"{i:9d}" for i in range(self.Ns)])}{"total":>12s}\n{"Kinetic energy":30s}'
                   f'{" ".join([f"{i:9.4f}" for i in self.kinetic_contributions])}{kinetic_contribution:12.7f}\n'
-                  f'{"External potential energy":30s}{" ".join([f"{i:9.4f}" for i in  per_site_array["v_ext"]])}'
+                  f'{"External potential energy":30s}{" ".join([f"{i:9.4f}" for i in per_site_array["v_ext"]])}'
                   f'{v_ext_contribution:12.7f}\n{"On-site repulsion":30s}'
                   f'{" ".join([f"{i:9.4f}" for i in self.onsite_repulsion])}{u_contribution:12.7f}\n{"Occupations":30s}'
                   f'{" ".join([f"{i:9.4f}" for i in self.n_ks * 2])}{np.sum(self.n_ks) * 2:12.7f}')
@@ -409,7 +409,7 @@ class Molecule:
         plt.title("Evolution of density in simulation")
         plt.show()
 
-    def log_CASCI(self, site_id, y_a_correct_imp, P, v, h_tilde, h_tilde_dimer):
+    def log_casci(self, site_id, y_a_correct_imp, P, v, h_tilde, h_tilde_dimer):
         self.report_string += f'\t\t\tNew 1RDM that is optained by replacing indices 0 and {site_id}\n\t\t\t'
         temp1 = print_matrix(y_a_correct_imp, ret=True).replace('\n', '\n\t\t\t')[:-3]
         self.report_string += temp1
@@ -503,7 +503,7 @@ class Molecule:
         self.oscillation_correction_dict = dict()
 
 
-def cost_function_CASCI(mu_imp, embedded_mol, h_tilde_dimer, u_0_dimer, desired_density):
+def cost_function_casci(mu_imp, embedded_mol, h_tilde_dimer, u_0_dimer, desired_density):
     mu_imp = mu_imp[0]
     mu_imp_array = np.array([[mu_imp, 0], [0, 0]])
     embedded_mol.build_hamiltonian_fermi_hubbard(h_tilde_dimer - mu_imp_array, u_0_dimer)
@@ -513,13 +513,23 @@ def cost_function_CASCI(mu_imp, embedded_mol, h_tilde_dimer, u_0_dimer, desired_
     return (density_dimer[0, 0] - desired_density) ** 2
 
 
+def cost_function_casci_root(mu_imp, embedded_mol, h_tilde_dimer, u_0_dimer, desired_density):
+    # mu_imp = mu_imp[0]
+    mu_imp_array = np.array([[mu_imp, 0], [0, 0]])
+    embedded_mol.build_hamiltonian_fermi_hubbard(h_tilde_dimer - mu_imp_array, u_0_dimer)
+    embedded_mol.diagonalize_hamiltonian()
+
+    density_dimer = embedded_mol.calculate_1rdm(index=0)
+    return density_dimer[0, 0] - desired_density
+
+
 def see_landscape_ruggedness(embedded_mol, h_tilde_dimer, u_0_dimer, goal_density=False, optimized_potential=False,
                              num_dim=1, arange=(-2, 2 + 0.1, 0.1)):
     if num_dim == 1:
         x = np.arange(*arange)
         y = []
         for mu_imp in x:
-            abs_error = np.sqrt(cost_function_CASCI([mu_imp], embedded_mol, h_tilde_dimer, u_0_dimer, 0))
+            abs_error = np.sqrt(cost_function_casci([mu_imp], embedded_mol, h_tilde_dimer, u_0_dimer, 0))
             y.append(abs_error)
         fig, ax = plt.subplots(1, 1)
         ax.plot(x, y)

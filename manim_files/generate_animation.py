@@ -130,7 +130,7 @@ class GenerateRing(Scene):
 
         mol1 = MoleculeData(4, 4, param_dict, {(0, 1): 1, (1, 2): 1, (2, 3): 1, (3, 0): 1}, [[0, 2], [1, 3]])
         mol1.density_progress.append(mol1.n_ks.copy())
-        mol1.CASCI(0)
+        mol1.casci(0)
         mol1.v_hxc_progress.append(mol1.v_hxc.copy())
         mol1.calculate_ks()
         self.old_density = mol1.n_ks
@@ -571,7 +571,7 @@ class GenerateRing(Scene):
         # endregion
         # region Run proper CASCI function so I can plot points
         mol1.density_progress.append(mol1.n_ks.copy())
-        mol1.CASCI(0)
+        mol1.casci(0)
         mol1.v_hxc_progress.append(mol1.v_hxc.copy())
 
         # endregion
@@ -604,7 +604,7 @@ class GenerateRing(Scene):
         for i in range(3, 8):
             mol1.calculate_ks()
             mol1.density_progress.append(mol1.n_ks.copy())
-            mol1.CASCI(0)
+            mol1.casci(0)
             mol1.v_hxc_progress.append(mol1.v_hxc.copy())
             for point_site in range(2):
                 dot_list[point_site] += Dot(point=ax.c2p(i, mol1.v_hxc_progress[-1][point_site], 0), radius=0.05,
@@ -675,7 +675,7 @@ class GenerateRing(Scene):
         for i in range(8, 15):
             mol1.calculate_ks()
             mol1.density_progress.append(mol1.n_ks.copy())
-            mol1.CASCI(5)
+            mol1.casci(5)
             mol1.v_hxc_progress.append(mol1.v_hxc.copy())
             for point_site in range(2):
                 dot_list[point_site] += Dot(point=ax.c2p(i, mol1.v_hxc_progress[-1][point_site], 0), radius=0.05,
