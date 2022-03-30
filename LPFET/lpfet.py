@@ -9,6 +9,7 @@ import networkx as nx
 import sys
 from sklearn.linear_model import LinearRegression
 from typing import Union
+import typing
 
 sys.path.extend(['/mnt/c/Users/tinc9/Documents/CNRS-offline/', '../'])
 import essentials
@@ -157,7 +158,8 @@ class Molecule:
             self.equiv_atom_groups[index] = tuple(item)
             self.compensation_ratio_dict[index] = COMPENSATION_5_FACTOR
 
-    def self_consistent_loop(self, num_iter=10, tolerance=0.0001, overwrite_output="", oscillation_compensation=0):
+    def self_consistent_loop(self, num_iter=10, tolerance=0.0001, overwrite_output="",
+                             oscillation_compensation: typing.Union[int, typing.List[int]] = 0):
         self.report_string += "self_consistent_loop:\n"
         old_density = np.inf
         old_v_hxc = np.inf
@@ -169,7 +171,7 @@ class Molecule:
             self.density_progress.append(self.n_ks.copy())
             self.CASCI(oscillation_compensation)
             self.v_hxc_progress.append(self.v_hxc.copy())
-            print(f"Loop {i}", end=', ')
+            print(f"\nLoop {i}", end=', ')
             mean_square_difference_density = np.average(np.square(self.n_ks - old_density))
             max_difference_v_hxc = np.max(np.abs(self.v_hxc - old_v_hxc))
 
@@ -298,7 +300,7 @@ class Molecule:
             if 5 in oscillation_compensation:
                 new_mu_imp = mu_minus_1
                 if (mu_minus_2 - mu_minus_1) * (mu_minus_1 - mu_imp) < 0:
-                    self.compensation_ratio_dict[index] += 0.4
+                    self.compensation_ratio_dict[index] += 0.5
                 else:
                     self.compensation_ratio_dict[index] = max(self.compensation_ratio_dict[index] - 0.1, 1)
                 new_mu_imp += np.tanh((mu_imp - mu_minus_1)) / self.compensation_ratio_dict[index]
@@ -568,12 +570,20 @@ if __name__ == "__main__":
     edges_dict = dict()
     eq_list = []
     for j in range(6):
-        nodes_dict[j] = {'v': (j - 2.5) * i, 'U': 1}
+        nodes_dict[j] = {'v': (j - 2.5) * i, 'U': 7}
         if j != 5:
             edges_dict[(j, j + 1)] = 1
         eq_list.append([j])
     t, v_ext, u = generate_from_graph(nodes_dict, edges_dict)
     mol1.add_parameters(u, t, v_ext, eq_list)
-    mol1.self_consistent_loop(num_iter=30, tolerance=1E-6, oscillation_compensation=2)
-    mol1.calculate_energy()
-    y_ab, mol_fci, contribution_tuple, per_site_energy_array = mol1.compare_densities_FCI(mol_full, True)
+    end_str = '\n'
+    print(mol1.v_ext)
+    for i in range(10):
+        mol1.v_hxc = np.zeros(mol1.Ns)
+        mol1.v_hxc_progress = []
+        mol1.density_progress = []
+        start1 = datetime.now()
+        mol1.self_consistent_loop(num_iter=30, tolerance=1E-6, oscillation_compensation=[5, 1])
+        end1 = datetime.now()
+        end_str += str(end1 - start1) + '\n'
+    print(end_str)
