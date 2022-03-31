@@ -63,10 +63,10 @@ def generate_star1(i, n_sites, U_param):
     edges_dict = dict()
     eq_list = [[0], list(range(1, n_sites))]
     for j in range(n_sites):
-        nodes_dict[j] = {'v': 0, 'U': U_param}
+        nodes_dict[j] = {'v': i, 'U': U_param}
         if j != 0:
             edges_dict[(0, j)] = 1
-    nodes_dict[0]['v'] = i
+    nodes_dict[0]['v'] = 0
 
     return nodes_dict, edges_dict, eq_list
 
@@ -304,5 +304,18 @@ if __name__ == "__main__":
     # generate_trend(6, 6, generate_chain2, 'chain2', u_param=5)
     # generate_trend(6, 6, generate_chain3, 'chain3', u_param=5, delta_x=0.4, max_value=4)
     # generate_trend(6, 6, generate_star1, 'star1', u_param=5, delta_x=0.4, max_value=4)
-    generate_trend(6, 6, generate_complete1, 'complete1', u_param=5, delta_x=0.1, max_value=3)
+    # generate_trend(6, 6, generate_complete1, 'complete1', u_param=5, delta_x=0.1, max_value=3)
+    mol1 = lpfet.Molecule(6, 6, 'hehe')
+    nodes_dict, edges_dict, eq_list = generate_chain1(2, 6, 10)
+    t, v_ext, u = lpfet.generate_from_graph(nodes_dict, edges_dict)
+    mol1.add_parameters(u, t, v_ext, eq_list)
+    mol1.self_consistent_loop(50, 1e-4, oscillation_compensation=[5, 1])
+    mol_full = lpfet.class_Quant_NBody.QuantNBody(6, 6)
+    mol_full.build_operator_a_dagger_a()
+    U = np.zeros((6, 6, 6, 6))
+    for i in range(6):
+        U[i, i, i, i] = u[i]
+    mol_full.build_hamiltonian_fermi_hubbard(t+np.diag(v_ext), U)
+    mol_full.diagonalize_hamiltonian()
+    tuple1 = mol_full.calculate_v_hxc(mol1.v_hxc)
     pass
