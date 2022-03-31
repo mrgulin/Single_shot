@@ -159,7 +159,7 @@ class Molecule:
             self.compensation_ratio_dict[index] = COMPENSATION_5_FACTOR
 
     def self_consistent_loop(self, num_iter=10, tolerance=0.0001, overwrite_output="",
-                             oscillation_compensation: typing.Union[int, typing.List[int]] = 0):
+                             oscillation_compensation: typing.Union[int, typing.List[int]] = 0,  v_hxc_0=None):
         self.report_string += "self_consistent_loop:\n"
         old_density = np.inf
         old_v_hxc = np.inf
@@ -169,7 +169,7 @@ class Molecule:
             self.report_string += f"Iteration # = {i}\n"
             self.calculate_ks()
             self.density_progress.append(self.n_ks.copy())
-            self.casci(oscillation_compensation)
+            self.casci(oscillation_compensation, v_hxc_0)
             self.v_hxc_progress.append(self.v_hxc.copy())
             print(f"\nLoop {i}", end=', ')
             mean_square_difference_density = np.average(np.square(self.n_ks - old_density))
@@ -200,15 +200,13 @@ class Molecule:
         self.y_a = generate_1rdm(self.Ns, self.Ne, self.wf_ks)
         self.n_ks = np.copy(self.y_a.diagonal())
 
-    def casci(self, oscillation_compensation=0):
+    def casci(self, oscillation_compensation=0, v_hxc_0=None):
         self.report_string += "\tEntered CASCI\n"
+        mu_imp_first = np.nan
         first_iteration = True
         for site_group in self.equiv_atom_groups.keys():
             self.report_string += f"\t\tGroup {site_group} with sites {self.equiv_atom_groups[site_group]}\n"
             site_id = self.equiv_atom_groups[site_group][0]
-            if first_iteration:
-                if 0 not in self.equiv_atom_groups[site_group]:
-                    raise Exception("Unexpected behaviour: First impurity site should have been the 0th site")
 
             # Householder transforms impurity on index 0 so we have to make sure that impurity is on index 0:
             y_a_correct_imp = change_indices(self.y_a, site_id)
@@ -231,19 +229,17 @@ class Molecule:
                                                args=(self.embedded_mol, h_tilde_dimer, u_0_dimer, self.n_ks[site_id]),
                                                bracket=[-0.1, 15], method='brentq', options={'xtol':1e-6})
             mu_imp, function_calls = sol.root, sol.function_calls
+            if first_iteration:
+                if 0 not in self.equiv_atom_groups[site_group]:
+                    raise Exception("Unexpected behaviour: First impurity site should have been the 0th site")
+                mu_imp_first = mu_imp
 
-
+            delta_mu_imp = mu_imp - mu_imp_first
             self.report_string += f'\t\t\tOptimized chemical potential mu_imp: {mu_imp}, done in {function_calls}' \
-                                  f' iterations\n'
-
-
-            self.update_v_hxc(site_group, mu_imp, oscillation_compensation)
-
-            # Kinetic contributions
-            # kinetic_contribution = 2 * (t_i_tilde[0, 0] * self.embedded_mol.one_rdm[0, 0] +
-            #                             t_i_tilde[1, 0] * self.embedded_mol.one_rdm[1, 0])
-            # print(t_i_tilde[0, 0] * self.embedded_mol.one_rdm[0, 0],
-            #       t_i_tilde[1, 0] * self.embedded_mol.one_rdm[0, 1],f"->{t_i_tilde[1, 0] - h_tilde[1, 0]}<-", h_tilde[1, 0])
+                                  f' iterations\n\t\t\tRelative change from impurity 0: {delta_mu_imp}'
+            if v_hxc_0 is None:
+                v_hxc_0 = mu_imp_first
+            self.update_v_hxc(site_group, v_hxc_0 + delta_mu_imp, oscillation_compensation)
 
             on_site_repulsion_i = self.embedded_mol.calculate_2rdm_fh(index=0)[0, 0, 0, 0] * u_0_dimer[0, 0, 0, 0]
             for every_site_id in self.equiv_atom_groups[site_group]:
