@@ -143,4 +143,9 @@ Trash/
 *.dll
 
 manim_files/media
+
+
+# R project
 .Rproj.user
+R_shiny_image_preview/.RData
+R_shiny_image_preview/.Rhistory
