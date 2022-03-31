@@ -131,6 +131,7 @@ def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecul
     y_ref = []
     energy_ref = []
     energy = []
+    v_hxc_ref_progress = []
     first = True
     energy_per_site = []
     energy_ref_per_site = []
@@ -138,11 +139,14 @@ def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecul
     old_v_hxc = np.zeros(n_sites)
     with open(f"{folder_name}systems.txt", "w") as myfile:
         myfile.write("")
+    x_label = ""
     for i in x:
         if constant_var == "i":
             u_param = i
+            x_label = 'U'
         elif constant_var == "u":
             i_param = i
+            x_label = 'i (delta v_ext)'
         if not first:
             mol1.clear_object(name)
             mol1.v_hxc = old_v_hxc
@@ -155,7 +159,7 @@ def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecul
             myfile.write(f"\n\n{repr(t)}\n{repr(v_ext)}\n{repr(u)}")
         mol1.add_parameters(u, t, v_ext, eq_list)
         mol1.self_consistent_loop(num_iter=50, tolerance=1E-6, oscillation_compensation=[5, 1],
-                                  overwrite_output=folder_name + 'log.txt')
+                                  overwrite_output=folder_name + 'log.txt', v_hxc_0=0)
         # mol1.optimize_solution(5, 0.2)
         mol1.calculate_energy(True)
         correction_dict_list.append(mol1.oscillation_correction_dict)
@@ -163,6 +167,13 @@ def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecul
         y_simple.append(mol1.n_ks)
         y_ab, mol_fci, energy_ref_i, energy_ref_per_site_i = mol1.compare_densities_FCI(pass_object=mol_full,
                                                                                         calculate_per_site=True)
+        v_hxc_correct = mol_fci.calculate_v_hxc(np.zeros(n_sites) + 1)
+        print(v_hxc_correct)
+        if type(v_hxc_correct) == bool:
+            print("didn't manage to converge")
+            v_hxc_ref_progress.append(np.zeros(n_sites) * np.nan)
+        else:
+            v_hxc_ref_progress.append(v_hxc_correct.copy())
         energy_per_site.append(mol1.per_site_energy)
         energy_ref_per_site.append(energy_ref_per_site_i)
         y_ref.append(y_ab.diagonal())
@@ -172,11 +183,11 @@ def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecul
         old_v_hxc = mol1.v_hxc.copy()
 
     calculate_graphs(folder_name, x, y, y_ref, y_simple, energy, energy_ref, v_hxc_progression_list,
-                     correction_dict_list, energy_per_site, energy_ref_per_site)
+                     correction_dict_list, energy_per_site, energy_ref_per_site, v_hxc_ref_progress, x_label)
 
 
 def calculate_graphs(folder_name, x, y, y_ref, y_simple, energy, energy_ref, v_hxc_progression_list,
-                     correction_dict_list, energy_per_site, energy_ref_per_site,
+                     correction_dict_list, energy_per_site, energy_ref_per_site, v_hxc_ref_progress,
                      x_label='i (v_ext)'):
     for i in range(len(y)):
         y[i] = np.array(y[i], dtype=float)
@@ -187,6 +198,7 @@ def calculate_graphs(folder_name, x, y, y_ref, y_simple, energy, energy_ref, v_h
     E_ref = np.array(energy_ref, dtype=[('tot', float), ('kin', float), ('v_ext', float), ('u', float)])
     E_per_site = np.array(energy_per_site)
     E_ref_per_site = np.array(energy_ref_per_site)
+    v_hxc_ref_progress = np.array(v_hxc_ref_progress)
 
     # saving variables
     np.savetxt(folder_name + 'x.dat', x)
@@ -196,6 +208,7 @@ def calculate_graphs(folder_name, x, y, y_ref, y_simple, energy, energy_ref, v_h
         conn.write(repr(y))
     with open(folder_name + 'v_hxc_progression_list.dat', 'w', encoding='UTF-8') as conn:
         conn.write(repr(v_hxc_progression_list))
+    np.savetxt(folder_name + 'v_hxc_ref_progress.dat', v_hxc_ref_progress)
     np.savetxt(folder_name + 'E.dat', E)
     np.savetxt(folder_name + 'E_ref.dat', E_ref)
     np.savetxt(folder_name + 'E_per_site.dat', E_per_site.view(float).reshape(E_per_site.shape[0], -1))
@@ -284,14 +297,34 @@ def calculate_graphs(folder_name, x, y, y_ref, y_simple, energy, energy_ref, v_h
     plt.legend(loc='upper center', bbox_to_anchor=(0.5, 1.05),
                ncol=3, fancybox=True, shadow=True)
     ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+    ax.set_ylim(0, 1)
     plt.savefig(f'{folder_name}/Densities.png', dpi=300, bbox_inches='tight')
     plt.savefig(f'{folder_name}/Densities.svg', dpi=300, bbox_inches='tight')
+
+    # plot hxc potential
+    colors = plt.cm.viridis(np.linspace(0, max(x), len(x)))
+    norm = mpl.colors.Normalize(vmin=0, vmax=max(x))
+    fig, ax = plt.subplots(1, 1, figsize=(7, 4))
+    v_hxc_simple = np.array([j[-1] for j in v_hxc_progression_list])
+    v_hxc_simple += (np.average(v_hxc_ref_progress, axis=1) - np.average(v_hxc_simple, axis=1)[np.newaxis]).T
+    for i in range(6):
+        plt.plot(x, v_hxc_simple[:, i], c=mpl.cm.get_cmap('tab10')(i), label=str(i))
+        plt.plot(x, v_hxc_ref_progress[:, i], c=mpl.cm.get_cmap('tab10')(i), label=str(i) + '-ref', linestyle='--')
+    plt.xlabel(x_label)
+    plt.ylabel("v_hxc")
+    box = ax.get_position()
+    ax.set_position([box.x0, box.y0, box.width * 0.75, box.height])
+    plt.legend(loc='upper center', bbox_to_anchor=(0.5, 1.05),
+               ncol=3, fancybox=True, shadow=True)
+    ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+    ax.set_title("Trend of v_hxc. LPFET; values are corrected so averages match")
+    plt.savefig(f'{folder_name}/v_hxc_trend.png', dpi=300, bbox_inches='tight')
+    plt.savefig(f'{folder_name}/v_hxc_trend.svg', dpi=300, bbox_inches='tight')
 
     fig, ax = plt.subplots(1, 1, figsize=(6, 6))
     fig.tight_layout()
     plt.xlabel(x_label)
     ax.set_ylabel('Error energy')
-    ax.set_ylim(0, 1)
     for site in range(6):
         ax.plot(x, E_per_site[:, site]['tot'] - E_ref_per_site[:, site]['tot'], c=mpl.cm.get_cmap('tab10')(site),
                 label=f'deviation on site {site}')
@@ -305,17 +338,21 @@ if __name__ == "__main__":
     # generate_trend(6, 6, generate_chain3, 'chain3', u_param=5, delta_x=0.4, max_value=4)
     # generate_trend(6, 6, generate_star1, 'star1', u_param=5, delta_x=0.4, max_value=4)
     # generate_trend(6, 6, generate_complete1, 'complete1', u_param=5, delta_x=0.1, max_value=3)
-    mol1 = lpfet.Molecule(6, 6, 'hehe')
-    nodes_dict, edges_dict, eq_list = generate_chain1(2, 6, 10)
-    t, v_ext, u = lpfet.generate_from_graph(nodes_dict, edges_dict)
-    mol1.add_parameters(u, t, v_ext, eq_list)
-    mol1.self_consistent_loop(50, 1e-4, oscillation_compensation=[5, 1])
-    mol_full = lpfet.class_Quant_NBody.QuantNBody(6, 6)
-    mol_full.build_operator_a_dagger_a()
-    U = np.zeros((6, 6, 6, 6))
-    for i in range(6):
-        U[i, i, i, i] = u[i]
-    mol_full.build_hamiltonian_fermi_hubbard(t+np.diag(v_ext), U)
-    mol_full.diagonalize_hamiltonian()
-    tuple1 = mol_full.calculate_v_hxc(mol1.v_hxc)
+
+
+    # mol1 = lpfet.Molecule(6, 6, 'hehe')
+    # nodes_dict, edges_dict, eq_list = generate_chain1(2, 6, 10)
+    # t, v_ext, u = lpfet.generate_from_graph(nodes_dict, edges_dict)
+    # mol1.add_parameters(u, t, v_ext, eq_list)
+    # mol1.self_consistent_loop(50, 1e-4, oscillation_compensation=[5, 1])
+    # mol_full = lpfet.class_Quant_NBody.QuantNBody(6, 6)
+    # mol_full.build_operator_a_dagger_a()
+    # U = np.zeros((6, 6, 6, 6))
+    # for i in range(6):
+    #     U[i, i, i, i] = u[i]
+    # mol_full.build_hamiltonian_fermi_hubbard(t+np.diag(v_ext), U)
+    # mol_full.diagonalize_hamiltonian()
+    # tuple1 = mol_full.calculate_v_hxc(mol1.v_hxc)
+
+    generate_trend(6, 6, generate_chain1, 'chain1_diff-0', i_param=1)
     pass
