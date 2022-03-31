@@ -213,8 +213,6 @@ class Molecule:
             # Householder transforms impurity on index 0 so we have to make sure that impurity is on index 0:
             y_a_correct_imp = change_indices(self.y_a, site_id)
             t_correct_imp = change_indices(self.t, site_id)
-            v_ext_correct_imp = change_indices(self.v_ext, site_id)
-            v_hxc_correct_imp = change_indices(self.v_hxc, site_id)
             v_s_correct_imp = change_indices(self.v_s, site_id)
 
             P, v = Quant_NBody.householder_transformation(y_a_correct_imp)
@@ -223,26 +221,21 @@ class Molecule:
             h_tilde_dimer = h_tilde[:2, :2]
             u_0_dimer = np.zeros((2, 2, 2, 2), dtype=np.float64)
             u_0_dimer[0, 0, 0, 0] += self.u[site_id]
-            # h_tilde_dimer[0,0] += self.v_ext[site_id]
             mu_imp = self.v_hxc[[site_id]]  # Double parenthesis so I keep array, in future this will be list of
             # indices for block householder
 
             self.log_casci(site_id, y_a_correct_imp, P, v, h_tilde, h_tilde_dimer)
             self.h_tilde_dimer[site_group] = h_tilde_dimer
-            opt_v_imp_obj = sc_opt.minimize(cost_function_casci, mu_imp,
-                                            args=(self.embedded_mol, h_tilde_dimer, u_0_dimer, self.n_ks[site_id]),
-                                            method='BFGS', options={'eps': 1e-5})
-            # This minimize cost function (difference between KS occupations and casci occupations squared)
-            error = opt_v_imp_obj['fun']
-            mu_imp = opt_v_imp_obj['x'][0]
 
-            # see_landscape_ruggedness(self.embedded_mol, h_tilde_dimer, u_0_dimer, goal_density=self.n_ks[site_id],
-            #                          optimized_potential=mu_imp, num_dim=1)
+            sol = sc_opt.root_scalar(cost_function_casci_root,
+                                               args=(self.embedded_mol, h_tilde_dimer, u_0_dimer, self.n_ks[site_id]),
+                                               bracket=[-0.1, 15], method='brentq', options={'xtol':1e-6})
+            mu_imp, function_calls = sol.root, sol.function_calls
 
-            self.report_string += f'\t\t\tOptimized chemical potential mu_imp: {mu_imp}\n'
-            self.report_string += f'\t\t\tError in densities (square): {error}\n'
 
-            # print(f"managed to get E^2={error} with mu_imp={mu_imp}")
+            self.report_string += f'\t\t\tOptimized chemical potential mu_imp: {mu_imp}, done in {function_calls}' \
+                                  f' iterations\n'
+
 
             self.update_v_hxc(site_group, mu_imp, oscillation_compensation)
 
@@ -503,16 +496,6 @@ class Molecule:
         self.oscillation_correction_dict = dict()
 
 
-def cost_function_casci(mu_imp, embedded_mol, h_tilde_dimer, u_0_dimer, desired_density):
-    mu_imp = mu_imp[0]
-    mu_imp_array = np.array([[mu_imp, 0], [0, 0]])
-    embedded_mol.build_hamiltonian_fermi_hubbard(h_tilde_dimer - mu_imp_array, u_0_dimer)
-    embedded_mol.diagonalize_hamiltonian()
-
-    density_dimer = embedded_mol.calculate_1rdm(index=0)
-    return (density_dimer[0, 0] - desired_density) ** 2
-
-
 def cost_function_casci_root(mu_imp, embedded_mol, h_tilde_dimer, u_0_dimer, desired_density):
     # mu_imp = mu_imp[0]
     mu_imp_array = np.array([[mu_imp, 0], [0, 0]])
@@ -588,12 +571,10 @@ if __name__ == "__main__":
     mol1.add_parameters(u, t, v_ext, eq_list)
     end_str = '\n'
     print(mol1.v_ext)
-    for i in range(10):
-        mol1.v_hxc = np.zeros(mol1.Ns)
-        mol1.v_hxc_progress = []
-        mol1.density_progress = []
-        start1 = datetime.now()
-        mol1.self_consistent_loop(num_iter=30, tolerance=1E-6, oscillation_compensation=[5, 1])
-        end1 = datetime.now()
-        end_str += str(end1 - start1) + '\n'
-    print(end_str)
+    mol1.v_hxc = np.zeros(mol1.Ns)
+    mol1.v_hxc_progress = []
+    mol1.density_progress = []
+    start1 = datetime.now()
+    mol1.self_consistent_loop(num_iter=30, tolerance=1E-6, oscillation_compensation=[5, 1])
+    end1 = datetime.now()
+    end_str += str(end1 - start1) + '\n'
