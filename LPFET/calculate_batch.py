@@ -161,8 +161,9 @@ def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecul
             myfile.write(f"\n\n{repr(t)}\n{repr(v_ext)}\n{repr(u)}")
         mol1.add_parameters(u, t, v_ext, eq_list)
         time1 = datetime.now()
-        mol1.self_consistent_loop(num_iter=50, tolerance=1E-6, oscillation_compensation=[5, 1],
-                                  overwrite_output=folder_name + 'log.txt', v_hxc_0=0)
+        # mol1.self_consistent_loop(num_iter=50, tolerance=1E-6, oscillation_compensation=[5, 1],
+        #                           overwrite_output=folder_name + 'log.txt', v_hxc_0=0)
+        mol1.find_solution_as_root(old_v_hxc[1:])
         time2 = datetime.now()
         # mol1.optimize_solution(5, 0.2)
         mol1.calculate_energy(True)
@@ -366,7 +367,7 @@ if __name__ == "__main__":
     # mol_full.diagonalize_hamiltonian()
     # tuple1 = mol_full.calculate_v_hxc(mol1.v_hxc)
     # mol1.self_consistent_loop(num_iter=30, tolerance=1E-6, oscillation_compensation=[5, 1])
-    time_l = generate_trend(6, 6, generate_chain1, 'chain1', i_param=1)
+    time_l = generate_trend(6, 6, generate_chain1, 'chain1-root', i_param=1)
     essentials.print_matrix(time_l)
     print('iterations: ', lpfet.ITERATION_NUM)
 
