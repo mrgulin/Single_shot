@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import scipy.optimize
 import scipy.optimize as sc_opt
 from datetime import datetime
 # For plotting of the molecule (if you don't need this you can delete Molecule.plot_hubbard_molecule
@@ -159,7 +160,7 @@ class Molecule:
             self.compensation_ratio_dict[index] = COMPENSATION_5_FACTOR
 
     def self_consistent_loop(self, num_iter=10, tolerance=0.0001, overwrite_output="",
-                             oscillation_compensation: typing.Union[int, typing.List[int]] = 0,  v_hxc_0=None):
+                             oscillation_compensation: typing.Union[int, typing.List[int]] = 0, v_hxc_0=None):
         self.report_string += "self_consistent_loop:\n"
         old_density = np.inf
         old_v_hxc = np.inf
@@ -191,6 +192,23 @@ class Molecule:
         conn.write(self.report_string)
         conn.close()
         return i
+
+    def find_solution_as_root(self, starting_approximation=None):
+        if starting_approximation is None:
+            approx1 = self.v_ext.copy()
+            approx1 -= approx1[0]
+            starting_approximation = approx1[1:] * (-0.5)
+        elif len(starting_approximation) != len(self.equiv_atom_groups) - 1:
+            raise Exception('Wrong length of the starting approximation')
+        model = scipy.optimize.root(cost_function_whole, starting_approximation,
+                                    args=(self,), options={'xtol': 1e-3, 'eps': 1e-3}, method='df-sane')
+        if not model.success or np.sum(np.square(model.fun)) > 0.01:
+            print("Didn't converge :c ")
+            return False
+        v_hxc = model.x
+        print(model.fun)
+        print(model)
+        return v_hxc
 
     @log_calculate_ks_decorator
     def calculate_ks(self):
@@ -226,8 +244,8 @@ class Molecule:
             self.h_tilde_dimer[site_group] = h_tilde_dimer
 
             sol = sc_opt.root_scalar(cost_function_casci_root,
-                                               args=(self.embedded_mol, h_tilde_dimer, u_0_dimer, self.n_ks[site_id]),
-                                               bracket=[-0.1, 15], method='brentq', options={'xtol':1e-6})
+                                     args=(self.embedded_mol, h_tilde_dimer, u_0_dimer, self.n_ks[site_id]),
+                                     bracket=[-0.1, 15], method='brentq', options={'xtol': 1e-6})
             mu_imp, function_calls = sol.root, sol.function_calls
             if first_iteration:
                 if 0 not in self.equiv_atom_groups[site_group]:
@@ -238,6 +256,8 @@ class Molecule:
             self.report_string += f'\t\t\tOptimized chemical potential mu_imp: {mu_imp}, done in {function_calls}' \
                                   f' iterations\n\t\t\tRelative change from impurity 0: {delta_mu_imp}'
             if v_hxc_0 is None:
+                # This means that if we keep v_hxc_0 equal to None,
+                # the algorithm does mu_imp -> v_hxc (mu_imp - mu_imp0 + mu_imp0)
                 v_hxc_0 = mu_imp_first
             self.update_v_hxc(site_group, v_hxc_0 + delta_mu_imp, oscillation_compensation)
 
@@ -492,8 +512,62 @@ class Molecule:
         self.oscillation_correction_dict = dict()
 
 
+def cost_function_whole(v_hxc_approximation: np.array, mol_obj: Molecule) -> np.array:
+    mol_obj.v_hxc = np.insert(v_hxc_approximation, 0, 0, axis=0)
+    mol_obj.v_hxc_progress.append(mol_obj.v_hxc)
+    mol_obj.calculate_ks()
+    mol_obj.density_progress.append(mol_obj.n_ks)
+    output_array = np.zeros(len(mol_obj.equiv_atom_groups) - 1, float)
+    mu_imp_first = np.nan
+    first_iteration = True
+    output_index = 0
+    for site_group in mol_obj.equiv_atom_groups.keys():
+        site_id = mol_obj.equiv_atom_groups[site_group][0]
+        y_a_correct_imp = change_indices(mol_obj.y_a, site_id)
+        P, v = Quant_NBody.householder_transformation(y_a_correct_imp)
+        h_tilde = P @ (change_indices(mol_obj.t, site_id) + np.diag(change_indices(mol_obj.v_s, site_id))) @ P
+
+        h_tilde_dimer = h_tilde[:2, :2]
+        u_0_dimer = np.zeros((2, 2, 2, 2), dtype=np.float64)
+        u_0_dimer[0, 0, 0, 0] += mol_obj.u[site_id]
+
+        mol_obj.log_casci(site_id, y_a_correct_imp, P, v, h_tilde, h_tilde_dimer)
+        mol_obj.h_tilde_dimer[site_group] = h_tilde_dimer
+
+        if first_iteration:
+            if 0 not in mol_obj.equiv_atom_groups[site_group]:
+                raise Exception("Unexpected behaviour: First impurity site should have been the 0th site")
+            sol = sc_opt.root_scalar(cost_function_casci_root,
+                                     args=(mol_obj.embedded_mol, h_tilde_dimer, u_0_dimer, mol_obj.n_ks[site_id]),
+                                     bracket=[-0.1, 15], method='brentq', options={'xtol': 1e-6})
+            mu_imp, function_calls = sol.root, sol.function_calls
+            mu_imp_first = mu_imp
+        else:
+            mu_imp = mu_imp_first + mol_obj.v_hxc[site_id]
+            error_i = cost_function_casci_root(mu_imp, mol_obj.embedded_mol, h_tilde_dimer, u_0_dimer,
+                                               mol_obj.n_ks[site_id])
+            output_array[output_index] = error_i
+            output_index += 1
+
+        on_site_repulsion_i = mol_obj.embedded_mol.calculate_2rdm_fh(index=0)[0, 0, 0, 0] * u_0_dimer[0, 0, 0, 0]
+        for every_site_id in mol_obj.equiv_atom_groups[site_group]:
+            mol_obj.kinetic_contributions[every_site_id] = 2 * h_tilde[1, 0] * mol_obj.embedded_mol.one_rdm[1, 0]
+            mol_obj.onsite_repulsion[every_site_id] = on_site_repulsion_i
+            mol_obj.imp_potential[every_site_id] = mu_imp
+        first_iteration = False
+    rms = np.sqrt(np.mean(np.square(output_array)))
+    print(f"for input {''.join(['{num:{dec}}'.format(num=cell, dec='+10.4f') for cell in mol_obj.v_hxc])} we get error"
+          f" {''.join(['{num:{dec}}'.format(num=cell, dec='+10.4f') for cell in output_array])} "
+          f" (RMS = {rms})")
+    if rms < 1e-4:
+        return np.zeros(len(mol_obj.equiv_atom_groups) - 1, float)
+    return output_array
+
+ITERATION_NUM = 0
 def cost_function_casci_root(mu_imp, embedded_mol, h_tilde_dimer, u_0_dimer, desired_density):
     # mu_imp = mu_imp[0]
+    global ITERATION_NUM
+    ITERATION_NUM += 1
     mu_imp_array = np.array([[mu_imp, 0], [0, 0]])
     embedded_mol.build_hamiltonian_fermi_hubbard(h_tilde_dimer - mu_imp_array, u_0_dimer)
     embedded_mol.diagonalize_hamiltonian()
@@ -547,7 +621,7 @@ def generate_from_graph(sites, connections):
 
 
 if __name__ == "__main__":
-    i = 0.05
+    i = 2
     U_ = 1
     name = 'chain1'
     mol1 = Molecule(6, 6, name)
@@ -559,8 +633,8 @@ if __name__ == "__main__":
     edges_dict = dict()
     eq_list = []
     for j in range(6):
-        nodes_dict[j] = {'v': (j - 2.5) * i, 'U': 7}
-        if j != 5:
+        nodes_dict[j] = {'v': (j - 2.5) * i, 'U': 10}
+        if j != 6-1:
             edges_dict[(j, j + 1)] = 1
         eq_list.append([j])
     t, v_ext, u = generate_from_graph(nodes_dict, edges_dict)
@@ -571,6 +645,8 @@ if __name__ == "__main__":
     mol1.v_hxc_progress = []
     mol1.density_progress = []
     start1 = datetime.now()
-    mol1.self_consistent_loop(num_iter=30, tolerance=1E-6, oscillation_compensation=[5, 1])
+    # mol1.self_consistent_loop(num_iter=30, tolerance=1E-6, oscillation_compensation=[5, 1])
+    mol1.find_solution_as_root()
     end1 = datetime.now()
     end_str += str(end1 - start1) + '\n'
+    print(end_str, ITERATION_NUM)
