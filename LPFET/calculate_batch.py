@@ -1,6 +1,7 @@
 import sys
 import os
 import typing
+from datetime import datetime
 
 sys.path.append('../')
 sys.path.append(r'C:\Users\tinc9\Documents\CNRS-offline')
@@ -137,6 +138,7 @@ def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecul
     energy_ref_per_site = []
     correction_dict_list = []
     old_v_hxc = np.zeros(n_sites)
+    time_list = []
     with open(f"{folder_name}systems.txt", "w") as myfile:
         myfile.write("")
     x_label = ""
@@ -158,16 +160,21 @@ def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecul
         with open(f"{folder_name}systems.txt", "a") as myfile:
             myfile.write(f"\n\n{repr(t)}\n{repr(v_ext)}\n{repr(u)}")
         mol1.add_parameters(u, t, v_ext, eq_list)
+        time1 = datetime.now()
         mol1.self_consistent_loop(num_iter=50, tolerance=1E-6, oscillation_compensation=[5, 1],
                                   overwrite_output=folder_name + 'log.txt', v_hxc_0=0)
+        time2 = datetime.now()
         # mol1.optimize_solution(5, 0.2)
         mol1.calculate_energy(True)
+        time3 = datetime.now()
         correction_dict_list.append(mol1.oscillation_correction_dict)
         y.append(mol1.density_progress)
         y_simple.append(mol1.n_ks)
         y_ab, mol_fci, energy_ref_i, energy_ref_per_site_i = mol1.compare_densities_FCI(pass_object=mol_full,
                                                                                         calculate_per_site=True)
+        time4 = datetime.now()
         v_hxc_correct = mol_fci.calculate_v_hxc(np.zeros(n_sites) + 1)
+        time5 = datetime.now()
         print(v_hxc_correct)
         if type(v_hxc_correct) == bool:
             print("didn't manage to converge")
@@ -181,9 +188,14 @@ def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecul
         energy.append(mol1.energy_contributions)
         energy_ref.append(energy_ref_i)
         old_v_hxc = mol1.v_hxc.copy()
-
+        time_list.append([(time2-time1).total_seconds(), (time3-time2).total_seconds(), (time4-time3).total_seconds(),
+                          (time5-time4).total_seconds()])
+    time_before_graphs = datetime.now()
     calculate_graphs(folder_name, x, y, y_ref, y_simple, energy, energy_ref, v_hxc_progression_list,
                      correction_dict_list, energy_per_site, energy_ref_per_site, v_hxc_ref_progress, x_label)
+    print(f"time spent for making graphs: {(datetime.now()-time_before_graphs).total_seconds()}")
+    return np.array(time_list)
+
 
 
 def calculate_graphs(folder_name, x, y, y_ref, y_simple, energy, energy_ref, v_hxc_progression_list,
@@ -353,6 +365,9 @@ if __name__ == "__main__":
     # mol_full.build_hamiltonian_fermi_hubbard(t+np.diag(v_ext), U)
     # mol_full.diagonalize_hamiltonian()
     # tuple1 = mol_full.calculate_v_hxc(mol1.v_hxc)
+    # mol1.self_consistent_loop(num_iter=30, tolerance=1E-6, oscillation_compensation=[5, 1])
+    time_l = generate_trend(6, 6, generate_chain1, 'chain1', i_param=1)
+    essentials.print_matrix(time_l)
+    print('iterations: ', lpfet.ITERATION_NUM)
 
-    generate_trend(6, 6, generate_chain1, 'chain1_diff-0', i_param=1)
     pass
