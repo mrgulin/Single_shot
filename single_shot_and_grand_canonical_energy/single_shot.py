@@ -1,8 +1,7 @@
 import numpy as np
-import matplotlib.pyplot as plt
 import subprocess
 import os
-from essentials import OUTPUT_SEPARATOR, OUTPUT_FORMATTING_NUMBER, print_matrix
+from essentials import OUTPUT_FORMATTING_NUMBER, print_matrix
 
 
 def calculate_hopping(t_tilde, energy, big_u, delta_v):

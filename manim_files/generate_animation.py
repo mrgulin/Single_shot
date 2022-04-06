@@ -1,7 +1,5 @@
-import numpy as np
 import Quant_NBody
 import LPFET.lpfet as lpfet
-import essentials
 from manim import *
 
 dimer_opt_list = []

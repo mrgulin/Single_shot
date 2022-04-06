@@ -2,24 +2,11 @@ import sys
 import os
 import typing
 from datetime import datetime
-
-sys.path.append('../')
-sys.path.append(r'C:\Users\tinc9\Documents\CNRS-offline')
-
-import lpfet
+from . import lpfet
 import numpy as np
 import matplotlib.pyplot as plt
-
-import essentials
-import seaborn as sns
-import matplotlib.colors as mcolors
-
-import importlib
-
-importlib.reload(lpfet)
-
+from . import essentials
 import matplotlib as mpl
-from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 
 def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecule_name, u_param=None, i_param=None,
@@ -48,7 +35,7 @@ def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecul
         folder_name = f'results/u_{name}_ns-{n_sites}_ne-{n_electron}_i-{i_param}_dist-{delta_x}/'
         constant_var = 'i'
     else:
-        raise Exception("None of the parameteres is set!")
+        raise Exception("None of the parameters is set!")
 
     for one_path in [folder_name, folder_name + 'v_hxc', folder_name + 'occupation']:
         if not os.path.isdir(one_path):
@@ -70,8 +57,8 @@ def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecul
     old_v_hxc = None
     starting_approximation_c_hxc = None
     time_list = []
-    with open(f"{folder_name}systems.txt", "w") as myfile:
-        myfile.write("")
+    with open(f"{folder_name}systems.txt", "w") as my_file:
+        my_file.write("")
     x_label = ""
     for i in x:
         if constant_var == "i":
@@ -91,8 +78,8 @@ def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecul
         nodes_dict, edges_dict, eq_list = model_function(i_param, n_sites, u_param)
         t, v_ext, u = lpfet.generate_from_graph(nodes_dict, edges_dict)
         mol1.report_string = f'Object with {n_sites} sites and {n_electron} electrons\n'
-        with open(f"{folder_name}systems.txt", "a") as myfile:
-            myfile.write(f"\n\n{repr(t)}\n{repr(v_ext)}\n{repr(u)}")
+        with open(f"{folder_name}systems.txt", "a") as my_file:
+            my_file.write(f"\n\n{repr(t)}\n{repr(v_ext)}\n{repr(u)}")
         mol1.add_parameters(u, t, v_ext, eq_list, r_param)
         time1 = datetime.now()
         # mol1.self_consistent_loop(num_iter=50, tolerance=1E-6, oscillation_compensation=[5, 1], v_hxc_0=0)
@@ -104,7 +91,7 @@ def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecul
         correction_dict_list.append(mol1.oscillation_correction_dict)
         y.append(mol1.density_progress)
         y_simple.append(mol1.n_ks)
-        y_ab, mol_fci, energy_ref_i, energy_ref_per_site_i = mol1.compare_densities_FCI(pass_object=mol_full,
+        y_ab, mol_fci, energy_ref_i, energy_ref_per_site_i = mol1.compare_densities_fci(pass_object=mol_full,
                                                                                         calculate_per_site=True)
         time4 = datetime.now()
         v_hxc_correct = mol_fci.calculate_v_hxc(np.zeros(n_sites) + 1)
@@ -131,7 +118,7 @@ def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecul
     return np.array(time_list)
 
 
-
+# noinspection PyTypeChecker
 def calculate_graphs(folder_name, x, y, y_ref, y_simple, energy, energy_ref, v_hxc_progression_list,
                      correction_dict_list, energy_per_site, energy_ref_per_site, v_hxc_ref_progress,
                      x_label='i (v_ext)'):
@@ -140,11 +127,11 @@ def calculate_graphs(folder_name, x, y, y_ref, y_simple, energy, energy_ref, v_h
     y_ref = np.array(y_ref)
     y_simple = np.array(y_simple)
 
-    E = np.array(energy, dtype=[('tot', float), ('kin', float), ('v_ext', float), ('u', float),  ('v_term', float)])
-    E_ref = np.array(energy_ref, dtype=[('tot', float), ('kin', float), ('v_ext', float), ('u', float),
+    e = np.array(energy, dtype=[('tot', float), ('kin', float), ('v_ext', float), ('u', float),  ('v_term', float)])
+    e_ref = np.array(energy_ref, dtype=[('tot', float), ('kin', float), ('v_ext', float), ('u', float),
                                         ('v_term', float)])
-    E_per_site = np.array(energy_per_site)
-    E_ref_per_site = np.array(energy_ref_per_site)
+    e_per_site = np.array(energy_per_site)
+    e_ref_per_site = np.array(energy_ref_per_site)
     v_hxc_ref_progress = np.array(v_hxc_ref_progress)
 
     # saving variables
@@ -156,10 +143,10 @@ def calculate_graphs(folder_name, x, y, y_ref, y_simple, energy, energy_ref, v_h
     with open(folder_name + 'v_hxc_progression_list.dat', 'w', encoding='UTF-8') as conn:
         conn.write(repr(v_hxc_progression_list))
     np.savetxt(folder_name + 'v_hxc_ref_progress.dat', v_hxc_ref_progress)
-    np.savetxt(folder_name + 'E.dat', E)
-    np.savetxt(folder_name + 'E_ref.dat', E_ref)
-    np.savetxt(folder_name + 'E_per_site.dat', E_per_site.view(float).reshape(E_per_site.shape[0], -1))
-    np.savetxt(folder_name + 'E_ref_per_site.dat', E_ref_per_site.view(float).reshape(E_ref_per_site.shape[0], -1))
+    np.savetxt(folder_name + 'e.dat', e)
+    np.savetxt(folder_name + 'e_ref.dat', e_ref)
+    np.savetxt(folder_name + 'e_per_site.dat', e_per_site.view(float).reshape(e_per_site.shape[0], -1))
+    np.savetxt(folder_name + 'e_ref_per_site.dat', e_ref_per_site.view(float).reshape(e_ref_per_site.shape[0], -1))
     # Because np.savetxt can be done only on 2d array we reshape array into 2d array that has each row
     # [tot1, kin1, v_ext1, u1, tot2, kin2, ..... , v_extn, un]
 
@@ -210,32 +197,30 @@ def calculate_graphs(folder_name, x, y, y_ref, y_simple, energy, energy_ref, v_h
     fig.subplots_adjust(hspace=0.01, top=0.93)
     ax[0].grid(True, color='#E2E2E2')
     ax[1].grid(True, color='#E2E2E2')
-    ax[0].plot(x, E['tot'], c=mpl.cm.get_cmap('tab10')(0), label='tot E')
-    ax[0].plot(x, E_ref['tot'], c=mpl.cm.get_cmap('tab10')(0), linestyle='--')
-    ax[0].plot(x, E['kin'], c=mpl.cm.get_cmap('tab10')(1), label='Kinetic contribution')
-    ax[0].plot(x, E_ref['kin'], c=mpl.cm.get_cmap('tab10')(1), linestyle='--')
-    ax[0].plot(x, E['u'], c=mpl.cm.get_cmap('tab10')(2), label='On-site repulsion')
-    ax[0].plot(x, E_ref['u'], c=mpl.cm.get_cmap('tab10')(2), linestyle='--')
-    ax[0].plot(x, E['v_ext'], c=mpl.cm.get_cmap('tab10')(3), label='Ext potential contribution')
-    ax[0].plot(x, E_ref['v_ext'], c=mpl.cm.get_cmap('tab10')(3), linestyle='--')
-    ax[0].plot(x, E['v_term'], c=mpl.cm.get_cmap('tab10')(4), label='v_term contribution')
-    ax[0].plot(x, E_ref['v_term'], c=mpl.cm.get_cmap('tab10')(4), linestyle='--')
+    ax[0].plot(x, e['tot'], c=mpl.cm.get_cmap('tab10')(0), label='tot e')
+    ax[0].plot(x, e_ref['tot'], c=mpl.cm.get_cmap('tab10')(0), linestyle='--')
+    ax[0].plot(x, e['kin'], c=mpl.cm.get_cmap('tab10')(1), label='Kinetic contribution')
+    ax[0].plot(x, e_ref['kin'], c=mpl.cm.get_cmap('tab10')(1), linestyle='--')
+    ax[0].plot(x, e['u'], c=mpl.cm.get_cmap('tab10')(2), label='On-site repulsion')
+    ax[0].plot(x, e_ref['u'], c=mpl.cm.get_cmap('tab10')(2), linestyle='--')
+    ax[0].plot(x, e['v_ext'], c=mpl.cm.get_cmap('tab10')(3), label='Ext potential contribution')
+    ax[0].plot(x, e_ref['v_ext'], c=mpl.cm.get_cmap('tab10')(3), linestyle='--')
+    ax[0].plot(x, e['v_term'], c=mpl.cm.get_cmap('tab10')(4), label='v_term contribution')
+    ax[0].plot(x, e_ref['v_term'], c=mpl.cm.get_cmap('tab10')(4), linestyle='--')
     plt.xlabel(x_label)
     ax[0].set_ylabel('energy')
     ax[1].set_ylabel('Error energy')
-    ax[1].plot(x, E['tot'] - E_ref['tot'], c=mpl.cm.get_cmap('tab10')(0))
-    ax[1].plot(x, E['kin'] - E_ref['kin'], c=mpl.cm.get_cmap('tab10')(1))
-    ax[1].plot(x, E['u'] - E_ref['u'], c=mpl.cm.get_cmap('tab10')(2))
-    ax[1].plot(x, E['v_ext'] - E_ref['v_ext'], c=mpl.cm.get_cmap('tab10')(3))
-    ax[1].plot(x, E['v_term'] - E_ref['v_term'], c=mpl.cm.get_cmap('tab10')(4))
+    ax[1].plot(x, e['tot'] - e_ref['tot'], c=mpl.cm.get_cmap('tab10')(0))
+    ax[1].plot(x, e['kin'] - e_ref['kin'], c=mpl.cm.get_cmap('tab10')(1))
+    ax[1].plot(x, e['u'] - e_ref['u'], c=mpl.cm.get_cmap('tab10')(2))
+    ax[1].plot(x, e['v_ext'] - e_ref['v_ext'], c=mpl.cm.get_cmap('tab10')(3))
+    ax[1].plot(x, e['v_term'] - e_ref['v_term'], c=mpl.cm.get_cmap('tab10')(4))
     ax[1].plot(x, [0] * len(x), c='k', linestyle='--')
     fig.legend(loc='center left', bbox_to_anchor=(1, 0.5))
     # plt.savefig(f'{folder_name}/Energy_errors.png', dpi=300, bbox_inches='tight')
     plt.savefig(f'{folder_name}/Energy_errors.svg', dpi=300, bbox_inches='tight')
 
     # plot occupations
-    colors = plt.cm.viridis(np.linspace(0, max(x), len(x)))
-    norm = mpl.colors.Normalize(vmin=0, vmax=max(x))
     fig, ax = plt.subplots(1, 1, figsize=(7, 4))
     for i in range(6):
         plt.plot(x, y_simple[:, i], c=mpl.cm.get_cmap('tab10')(i), label=str(i))
@@ -252,8 +237,6 @@ def calculate_graphs(folder_name, x, y, y_ref, y_simple, energy, energy_ref, v_h
     plt.savefig(f'{folder_name}/Densities.svg', dpi=300, bbox_inches='tight')
 
     # plot hxc potential
-    colors = plt.cm.viridis(np.linspace(0, max(x), len(x)))
-    norm = mpl.colors.Normalize(vmin=0, vmax=max(x))
     fig, ax = plt.subplots(1, 1, figsize=(7, 4))
     v_hxc_simple = np.array([j[-1] for j in v_hxc_progression_list])
     v_hxc_simple += (np.average(v_hxc_ref_progress, axis=1) - np.average(v_hxc_simple, axis=1)[np.newaxis]).T
@@ -276,41 +259,8 @@ def calculate_graphs(folder_name, x, y, y_ref, y_simple, energy, energy_ref, v_h
     plt.xlabel(x_label)
     ax.set_ylabel('Error energy')
     for site in range(6):
-        ax.plot(x, E_per_site[:, site]['tot'] - E_ref_per_site[:, site]['tot'], c=mpl.cm.get_cmap('tab10')(site),
+        ax.plot(x, e_per_site[:, site]['tot'] - e_ref_per_site[:, site]['tot'], c=mpl.cm.get_cmap('tab10')(site),
                 label=f'deviation on site {site}')
     fig.legend(loc='center left', bbox_to_anchor=(1, 0.5))
     # fig.savefig(f'{folder_name}/Energy_errors_per_site.png', dpi=300, bbox_inches='tight')
     fig.savefig(f'{folder_name}/Energy_errors_per_site.svg', dpi=300, bbox_inches='tight')
-
-
-if __name__ == "__main__":
-    # generate_trend(6, 6, generate_chain2, 'chain2', u_param=5)
-    # generate_trend(6, 6, generate_chain3, 'chain3', u_param=5, delta_x=0.4, max_value=4)
-    # generate_trend(6, 6, essentials.generate_star1, 'star1', u_param=5, delta_x=0.4, max_value=4)
-    # generate_trend(6, 6, generate_complete1, 'complete1', u_param=5, delta_x=0.1, max_value=3)
-
-
-    # mol1 = lpfet.Molecule(6, 6, 'hehe')
-    # nodes_dict, edges_dict, eq_list = essentials.generate_chain1(2, 6, 10)
-    # t, v_ext, u = lpfet.generate_from_graph(nodes_dict, edges_dict)
-    # mol1.add_parameters(u, t, v_ext, eq_list)
-    # mol1.self_consistent_loop(50, 1e-4, oscillation_compensation=[5, 1])
-    # mol_full = lpfet.class_Quant_NBody.QuantNBody(6, 6)
-    # mol_full.build_operator_a_dagger_a()
-    # U = np.zeros((6, 6, 6, 6))
-    # for i in range(6):
-    #     U[i, i, i, i] = u[i]
-    # mol_full.build_hamiltonian_fermi_hubbard(t+np.diag(v_ext), U)
-    # mol_full.diagonalize_hamiltonian()
-    # tuple1 = mol_full.calculate_v_hxc(mol1.v_hxc)
-    # mol1.self_consistent_loop(num_iter=30, tolerance=1E-6, oscillation_compensation=[5, 1])
-    # time_l = generate_trend(6, 6, essentials.generate_chain1, 'chain1-root_r-0.5', i_param=1, r_param=0.5)
-    # time_l = generate_trend(6, 6, essentials.generate_chain1, 'chain1-root_r-0.2', i_param=1, r_param=0.2)
-    # time_l = generate_trend(6, 2, essentials.generate_star1, 'star1', i_param=1)
-    time_l = generate_trend(6, 6, essentials.generate_star1, 'star1', i_param=1)
-    # time_l = generate_trend(6, 2, essentials.generate_complete1, 'complete1', i_param=3)
-    # time_l = generate_trend(6, 10, essentials.generate_complete1, 'complete1', i_param=3)
-    essentials.print_matrix(time_l)
-    print('iterations: ', lpfet.ITERATION_NUM)
-
-    pass

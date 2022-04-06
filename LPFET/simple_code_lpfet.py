@@ -22,6 +22,6 @@ mol1.add_parameters(u, t, v_ext, eq_list)
 mol1.self_consistent_loop(num_iter=20, tolerance=1E-6, oscillation_compensation=1)
 
 # Comparison to FCI
-y_ab, rest =mol1.compare_densities_FCI(pass_object=False)
+y_ab, rest =mol1.compare_densities_fci(pass_object=False)
 
 

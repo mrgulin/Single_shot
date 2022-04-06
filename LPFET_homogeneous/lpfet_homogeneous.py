@@ -1,21 +1,14 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import scipy.optimize as sc_opt
 from datetime import datetime
 # For plotting of the molecule (if you don't need this you can delete Molecule.plot_hubbard_molecule
 # and this import statements
-import pandas as pd
-import networkx as nx
 import sys
-from sklearn.linear_model import LinearRegression
 
 sys.path.extend(['/mnt/c/Users/tinc9/Documents/CNRS-offline/', '../'])
-import essentials
 import Quant_NBody  # Folder Quant_NBody has to be in the sys.path or installed as package.
 import Quant_NBody.class_Quant_NBody as class_Quant_NBody
-from essentials import OUTPUT_SEPARATOR, OUTPUT_FORMATTING_NUMBER, print_matrix, generate_1rdm
 import essentials
-from matplotlib.patches import Rectangle
 
 COMPENSATION_1_RATIO = 0.75  # for the Molecule.update_v_hxc
 COMPENSATION_MAX_ITER_HISTORY = 4

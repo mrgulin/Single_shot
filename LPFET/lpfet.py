@@ -5,16 +5,13 @@ import scipy.optimize as sc_opt
 from datetime import datetime
 # For plotting of the molecule (if you don't need this you can delete Molecule.plot_hubbard_molecule
 # and this import statements
-import pandas as pd
 import networkx as nx
-import sys
 from sklearn.linear_model import LinearRegression
 from typing import Union
 import typing
-from .. import essentials
 import Quant_NBody  # Folder Quant_NBody has to be in the sys.path or installed as package.
 import Quant_NBody.class_Quant_NBody as class_Quant_NBody
-from ..essentials import OUTPUT_SEPARATOR, OUTPUT_FORMATTING_NUMBER, print_matrix, generate_1rdm
+from essentials import generate_1rdm
 
 COMPENSATION_1_RATIO = 0.5  # for the Molecule.update_v_hxc
 COMPENSATION_MAX_ITER_HISTORY = 4
@@ -56,9 +53,9 @@ class Molecule:
         # KS
         self.v_s = np.zeros(self.Ns, dtype=np.float64)  # Kohn-Sham potential
         self.h_ks = np.array((), dtype=np.float64)
-        self.wf_ks = np.array((), dtype=np.float64)  # Kohn-Sham wavefunciton
+        self.wf_ks = np.array((), dtype=np.float64)  # Kohn-Sham wave function
         self.epsilon_s = np.array((), dtype=np.float64)  # Kohn-Sham energies
-        self.n_ks = np.array((), dtype=np.float64)  # Densities of KS sysyem
+        self.n_ks = np.array((), dtype=np.float64)  # Densities of KS system
         self.v_hxc = np.zeros(self.Ns, dtype=np.float64)  # Hartree exchange correlation potential
         self.imp_potential = np.zeros(self.Ns, dtype=np.float64)
 
@@ -178,14 +175,12 @@ class Molecule:
             t_correct_imp = change_indices(self.t, site_id)
             v_s_correct_imp = change_indices(self.v_s, site_id)
 
-            P, v = Quant_NBody.householder_transformation(y_a_correct_imp)
-            h_tilde = P @ (t_correct_imp + np.diag(v_s_correct_imp)) @ P
+            p, v = Quant_NBody.householder_transformation(y_a_correct_imp)
+            h_tilde = p @ (t_correct_imp + np.diag(v_s_correct_imp)) @ p
 
             h_tilde_dimer = h_tilde[:2, :2]
             u_0_dimer = np.zeros((2, 2, 2, 2), dtype=np.float64)
             u_0_dimer[0, 0, 0, 0] += self.u[site_id]
-            mu_imp = self.v_hxc[[site_id]]  # Double parenthesis so I keep array, in future this will be list of
-            # indices for block householder
 
             self.h_tilde_dimer[site_group] = h_tilde_dimer
 
@@ -209,10 +204,10 @@ class Molecule:
             on_site_repulsion_i = two_rdm[0, 0, 0, 0] * u_0_dimer[0, 0, 0, 0]
             v_term_repulsion_i = np.sum(two_rdm * u_0_dimer) - on_site_repulsion_i
             for every_site_id in self.equiv_atom_groups[site_group]:
-                self.kinetic_contributions[every_site_id] = 2 * h_tilde[1, 0] * self.embedded_mol.one_rdm[1, 0]
-                self.onsite_repulsion[every_site_id] = on_site_repulsion_i
                 self.imp_potential[every_site_id] = mu_imp
                 self.v_term_repulsion[every_site_id] = v_term_repulsion_i
+                self.kinetic_contributions[every_site_id] = 2 * h_tilde[1, 0] * self.embedded_mol.one_rdm[1, 0]
+                self.onsite_repulsion[every_site_id] = on_site_repulsion_i
 
             first_iteration = False
 
@@ -220,7 +215,7 @@ class Molecule:
         global COMPENSATION_5_FACTOR
         if type(oscillation_compensation) == int:
             oscillation_compensation = [oscillation_compensation]
-        elif len(self.v_hxc_progress) < 2:
+        if len(self.v_hxc_progress) < 2:
             index = self.equiv_atom_groups[site_group][0]
             if len(self.v_hxc_progress) == 0:
                 mu_minus_1 = self.v_hxc[index]
@@ -281,7 +276,7 @@ class Molecule:
                         mu_minus_2, mu_minus_1, mu_imp, new_mu_imp)
             if 3 in oscillation_compensation:
                 pml2 = np.array(pml)
-                x_data = np.arange(len(pml2)).reshape(-1, 1)
+                x_data = np.range1(len(pml2)).reshape(-1, 1)
                 reg = LinearRegression().fit(x_data, pml2)
                 r2 = reg.score(x_data, pml2)
                 factor1 = r2  # np.exp((r2 - 1) * 3)
@@ -315,13 +310,14 @@ class Molecule:
                   f'{"External potential energy":30s}{" ".join([f"{i:9.4f}" for i in per_site_array["v_ext"]])}'
                   f'{v_ext_contribution:12.7f}\n{"On-site repulsion":30s}'
                   f'{" ".join([f"{i:9.4f}" for i in self.onsite_repulsion])}{u_contribution:12.7f}\n'
-                  f'{"V-term repulsion":30s}{" ".join([f"{i:9.4f}" for i in self.v_term_repulsion])}{v_term_contribution:12.7f}\n'
+                  f'{"V-term repulsion":30s}{" ".join([f"{i:9.4f}" for i in self.v_term_repulsion])}'
+                  f'{v_term_contribution:12.7f}\n'
                   f'{"Occupations":30s}{" ".join([f"{i:9.4f}" for i in self.n_ks * 2])}{np.sum(self.n_ks) * 2:12.7f}')
             print(f'{"_" * 20}\nTotal energy:{total_energy}')
 
         return total_energy
 
-    def compare_densities_FCI(self, pass_object: Union[bool, class_Quant_NBody.QuantNBody] = False,
+    def compare_densities_fci(self, pass_object: Union[bool, class_Quant_NBody.QuantNBody] = False,
                               calculate_per_site=False):
         if type(pass_object) != bool:
             mol_full = pass_object
@@ -347,8 +343,8 @@ class Molecule:
                 per_site_array[site]['u'] = on_site_repulsion_array[site, site, site, site]
                 per_site_array[site]['kin'] = np.sum(t_multiplied_matrix[site])
                 per_site_array[site]['v_term'] = 0.5 * (np.sum(on_site_repulsion_array[site, site, :, :]) +
-                                                        np.sum(on_site_repulsion_array[:, :, site, site])) - \
-                                                 on_site_repulsion_array[site, site, site, site]
+                                                        np.sum(on_site_repulsion_array[:, :, site, site]))
+                per_site_array[site]['v_term'] -= on_site_repulsion_array[site, site, site, site]
                 per_site_array[site]['tot'] = sum(per_site_array[site])
             u_contribution = np.sum(per_site_array['u'])
             v_term_contribution = np.sum(per_site_array['v_term'])
@@ -374,7 +370,7 @@ class Molecule:
         colors = ['lightgrey', 'mistyrose', 'lightcyan', 'thistle', 'springgreen', 'yellow', 'cyan', 'magenta',
                   'orange']
         color_map = []
-        labeldict = {}
+        label_dict = {}
         edge_labels = dict()
         for i in range(self.Ns):
             node_string = f"U={self.u[i]:.1f}\nv_ext={self.v_ext[i]:.3f}"
@@ -385,7 +381,7 @@ class Molecule:
             else:
                 group_id = -1
             g.add_nodes_from([(i, {'color': colors[group_id]})])
-            labeldict[i] = node_string
+            label_dict[i] = node_string
             for j in range(i, self.Ns):
                 if self.t[i, j] != 0:
                     edge_string = f"{self.t[i, j]}"
@@ -395,7 +391,7 @@ class Molecule:
             color_map.append(g.nodes[i]['color'])
         fig, ax = plt.subplots(1, 1)
         position = nx.spring_layout(g)
-        nx.draw(g, pos=position, ax=ax, labels=labeldict, with_labels=True, node_color=color_map, node_size=5000,
+        nx.draw(g, pos=position, ax=ax, labels=label_dict, with_labels=True, node_color=color_map, node_size=5000,
                 font_weight='bold')
         nx.draw_networkx_edge_labels(g, position, edge_labels)
         ax.set_xlim(*np.array(ax.get_xlim()) * 1.3)
@@ -439,8 +435,8 @@ def cost_function_whole(v_hxc_approximation: np.array, mol_obj: Molecule) -> np.
     for site_group in mol_obj.equiv_atom_groups.keys():
         site_id = mol_obj.equiv_atom_groups[site_group][0]
         y_a_correct_imp = change_indices(mol_obj.y_a, site_id)
-        P, v = Quant_NBody.householder_transformation(y_a_correct_imp)
-        h_tilde = P @ (change_indices(mol_obj.t, site_id) + np.diag(change_indices(mol_obj.v_s, site_id))) @ P
+        p, v = Quant_NBody.householder_transformation(y_a_correct_imp)
+        h_tilde = p @ (change_indices(mol_obj.t, site_id) + np.diag(change_indices(mol_obj.v_s, site_id))) @ p
 
         h_tilde_dimer = h_tilde[:2, :2]
         if mol_obj.v_term:
@@ -454,7 +450,7 @@ def cost_function_whole(v_hxc_approximation: np.array, mol_obj: Molecule) -> np.
                 mask[0] = site_id
                 mask[site_id] = 0
                 u4d_correct_indices = u4d[:, :, :, mask][:, :, mask, :][:, mask, :, :][mask, :, :, :]
-            u_0_dimer = np.einsum('ap, bq, cr, ds, abcd -> pqrs', P, P, P, P, u4d_correct_indices)[:2, :2, :2, :2]
+            u_0_dimer = np.einsum('ap, bq, cr, ds, abcd -> pqrs', p, p, p, p, u4d_correct_indices)[:2, :2, :2, :2]
         else:
             u_0_dimer = np.zeros((2, 2, 2, 2), dtype=np.float64)
             u_0_dimer[0, 0, 0, 0] += mol_obj.u[site_id]
@@ -485,7 +481,7 @@ def cost_function_whole(v_hxc_approximation: np.array, mol_obj: Molecule) -> np.
             mol_obj.v_term_repulsion[every_site_id] = v_term_repulsion_i
         first_iteration = False
     rms = np.sqrt(np.mean(np.square(output_array)))
-    # print(f"for input {''.join(['{num:{dec}}'.format(num=cell, dec='+10.4f') for cell in mol_obj.v_hxc])} we get error"
+    # print(f"for input {''.join(['{num:{dec}}'.format(num=cell, dec='+10.4f') for cell in mol_obj.v_hxc])} error is"
     #       f" {''.join(['{num:{dec}}'.format(num=cell, dec='+10.4f') for cell in output_array])} "
     #       f" (RMS = {rms})")
     print(
@@ -510,9 +506,9 @@ def cost_function_casci_root(mu_imp, embedded_mol, h_tilde_dimer, u_0_dimer, des
 
 
 def see_landscape_ruggedness(embedded_mol, h_tilde_dimer, u_0_dimer, goal_density=False, optimized_potential=False,
-                             num_dim=1, arange=(-2, 2 + 0.1, 0.1)):
+                             num_dim=1, range1=(-2, 2 + 0.1, 0.1)):
     if num_dim == 1:
-        x = np.arange(*arange)
+        x = np.arange(*range1)
         y = []
         for mu_imp in x:
             abs_error = np.sqrt(cost_function_casci([mu_imp], embedded_mol, h_tilde_dimer, u_0_dimer, 0))
@@ -554,23 +550,4 @@ def generate_from_graph(sites, connections):
 
 
 if __name__ == "__main__":
-    name = 'chain1'
-    mol1 = Molecule(6, 6, name)
-    mol_full = class_Quant_NBody.QuantNBody(6, 6)
-    mol_full.build_operator_a_dagger_a()
-    first = False
-    nodes_dict, edges_dict, eq_list = essentials.generate_chain1(i=1, n_sites=6, U_param=1)
-    t, v_ext, u = generate_from_graph(nodes_dict, edges_dict)
-    mol1.add_parameters(u, t, v_ext, eq_list, 0.5)
-    end_str = '\n'
-    print(mol1.v_ext)
-    mol1.v_hxc = np.zeros(mol1.Ns)
-    mol1.v_hxc_progress = []
-    mol1.density_progress = []
-    start1 = datetime.now()
-    # mol1.self_consistent_loop(num_iter=30, tolerance=1E-6, oscillation_compensation=[5, 1])
-    mol1.find_solution_as_root()
-    end1 = datetime.now()
-    end_str += str(end1 - start1) + '\n'
-    mol1.compare_densities_FCI(False, True)
-    print(end_str, ITERATION_NUM)
+    pass

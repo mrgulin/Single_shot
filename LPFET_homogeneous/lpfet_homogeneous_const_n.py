@@ -4,13 +4,7 @@ import scipy.optimize as sc_opt
 
 import sys
 sys.path.extend(['/mnt/c/Users/tinc9/Documents/CNRS-offline/', '../'])
-import essentials
 import LPFET_homogeneous.lpfet_homogeneous
-import Quant_NBody  # Folder Quant_NBody has to be in the sys.path or installed as package.
-import Quant_NBody.class_Quant_NBody as class_Quant_NBody
-from essentials import OUTPUT_SEPARATOR, OUTPUT_FORMATTING_NUMBER, print_matrix, generate_1rdm
-import essentials
-from matplotlib.patches import Rectangle
 
 
 class MoleculeConstN(LPFET_homogeneous.lpfet_homogeneous.Molecule):
