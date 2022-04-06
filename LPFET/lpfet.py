@@ -79,7 +79,7 @@ def log_calculate_ks_decorator(func):
 
 
 def log_add_parameters_decorator(func):
-    def wrapper_func(self, u, t, v_ext, equiv_atom_group_list, v_term_repulsion_ratio):
+    def wrapper_func(self, u, t, v_ext, equiv_atom_group_list, v_term_repulsion_ratio=False):
         ret_val = func(self, u, t, v_ext, equiv_atom_group_list, v_term_repulsion_ratio)
         self.report_string += f"add_parameters:\n\tU_iiii\n\t"
         temp1 = ['{num:{dec}}'.format(num=cell, dec=OUTPUT_FORMATTING_NUMBER) for cell in self.u]
@@ -233,6 +233,13 @@ class Molecule:
         self.h_ks = self.t + np.diag(self.v_s)
         self.epsilon_s, self.wf_ks = np.linalg.eigh(self.h_ks, 'U')
         self.y_a = generate_1rdm(self.Ns, self.Ne, self.wf_ks)
+        if self.Ne > 0:
+            e_homo = self.epsilon_s[(self.Ne - 1) // 2]
+        else:
+            e_homo = self.epsilon_s[0]
+        e_lumo = self.epsilon_s[self.Ne // 2]
+        if np.isclose(e_lumo, e_homo):
+            print(f"Problem: It looks like there are degenerated energy levels. {self.Ne}, {self.epsilon_s}")
         self.n_ks = np.copy(self.y_a.diagonal())
 
     def casci(self, oscillation_compensation=0, v_hxc_0=None):
