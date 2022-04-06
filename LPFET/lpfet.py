@@ -37,62 +37,6 @@ def change_indices(array_inp: np.array, site_id: int):
     return array
 
 
-def log_calculate_ks_decorator(func):
-    """
-    Wrapper that adds data to Molecule.report_string for method calculate_ks. Doesn't affect behaviour of the program!!
-    :param func:  calculate_ks function
-    :return: nested function
-    """
-
-    def wrapper_func(self):
-        ret_val = func(self)
-
-        self.report_string += f"\tEntered calculate_ks\n"
-
-        self.report_string += f"\t\tHartree exchange correlation potential\n\t\t"
-        temp1 = ['{num:{dec}}'.format(num=cell, dec=OUTPUT_FORMATTING_NUMBER) for cell in self.v_hxc]
-        self.report_string += f'{OUTPUT_SEPARATOR}'.join(temp1) + '\n'
-
-        self.report_string += "\t\tv_s\n\t\t"
-        temp1 = ['{num:{dec}}'.format(num=cell, dec=OUTPUT_FORMATTING_NUMBER) for cell in self.v_s]
-        self.report_string += f'{OUTPUT_SEPARATOR}'.join(temp1)
-
-        temp1 = print_matrix(self.h_ks, ret=True).replace('\n', '\n\t\t')[:-2]
-        self.report_string += f'\n\t\th_ks\n\t\t' + temp1 + '\t\t----Diagonalization---'
-
-        temp1 = print_matrix(self.wf_ks, ret=True).replace('\n', '\n\t\t')[:-2]
-        self.report_string += f'\n\t\tKS wave function\n\t\t' + temp1
-
-        self.report_string += "\t\tKohn Sham energy\n\t\t"
-        temp1 = ['{num:{dec}}'.format(num=cell, dec=OUTPUT_FORMATTING_NUMBER) for cell in self.epsilon_s]
-        self.report_string += f'{OUTPUT_SEPARATOR}'.join(temp1)
-
-        temp1 = print_matrix(self.y_a, ret=True).replace('\n', '\n\t\t')[:-2]
-        self.report_string += f'\n\t\t1RDM per spin\n\t\t' + temp1
-
-        self.report_string += "\t\tKS density\n\t\t"
-        temp1 = ['{num:{dec}}'.format(num=cell, dec=OUTPUT_FORMATTING_NUMBER) for cell in self.n_ks]
-        self.report_string += f'{OUTPUT_SEPARATOR}'.join(temp1) + '\n'
-        return ret_val
-
-    return wrapper_func
-
-
-def log_add_parameters_decorator(func):
-    def wrapper_func(self, u, t, v_ext, equiv_atom_group_list, v_term_repulsion_ratio=False):
-        ret_val = func(self, u, t, v_ext, equiv_atom_group_list, v_term_repulsion_ratio)
-        self.report_string += f"add_parameters:\n\tU_iiii\n\t"
-        temp1 = ['{num:{dec}}'.format(num=cell, dec=OUTPUT_FORMATTING_NUMBER) for cell in self.u]
-        self.report_string += f'{OUTPUT_SEPARATOR}'.join(temp1)
-        temp1 = ['{num:{dec}}'.format(num=cell, dec=OUTPUT_FORMATTING_NUMBER) for cell in self.v_ext]
-        self.report_string += f'\n\tv_ext\n\t' + f'{OUTPUT_SEPARATOR}'.join(temp1) + "\n"
-        temp1 = print_matrix(self.t, ret=True).replace('\n', '\n\t')[:-1]
-        self.report_string += f'\n\tt\n\t' + temp1
-        return ret_val
-
-    return wrapper_func
-
-
 class Molecule:
     def __init__(self, site_number, electron_number, description=''):
         self.description = f"{datetime.now().strftime('%Y_%m_%d_%H_%M')}" + description
@@ -133,7 +77,6 @@ class Molecule:
         self.embedded_mol = class_Quant_NBody.QuantNBody(2, 2)
         self.embedded_mol.build_operator_a_dagger_a()
 
-        self.report_string = f'Object with {self.Ns} sites and {self.Ne} electrons\n'
 
         self.density_progress = []  # This object is used for gathering changes in the density over iterations
         self.v_hxc_progress = []
@@ -145,7 +88,6 @@ class Molecule:
 
         self.compensation_ratio_dict = dict()
 
-    @log_add_parameters_decorator
     def add_parameters(self, u, t, v_ext, equiv_atom_group_list,
                        v_term_repulsion_ratio: typing.Union[bool, float] = False):
         if len(u) != self.Ns or len(t) != self.Ns or len(v_ext) != self.Ns:
@@ -176,13 +118,11 @@ class Molecule:
 
     def self_consistent_loop(self, num_iter=10, tolerance=0.0001, overwrite_output="",
                              oscillation_compensation: typing.Union[int, typing.List[int]] = 0, v_hxc_0=None):
-        self.report_string += "self_consistent_loop:\n"
         old_density = np.inf
         old_v_hxc = np.inf
         i = 0
         for i in range(num_iter):
             self.iteration_i = i
-            self.report_string += f"Iteration # = {i}\n"
             self.calculate_ks()
             self.density_progress.append(self.n_ks.copy())
             self.casci(oscillation_compensation, v_hxc_0)
@@ -191,21 +131,11 @@ class Molecule:
             mean_square_difference_density = np.average(np.square(self.n_ks - old_density))
             max_difference_v_hxc = np.max(np.abs(self.v_hxc - old_v_hxc))
 
-            self.log_scl(old_density, mean_square_difference_density, i, tolerance, num_iter)
 
             if mean_square_difference_density < tolerance and max_difference_v_hxc < 0.01:
                 break
             old_density = self.n_ks
             old_v_hxc = self.v_hxc.copy()
-        self.report_string += f'Final Hxc chemical potential:\n'
-        temp1 = ['{num:{dec}}'.format(num=cell, dec=OUTPUT_FORMATTING_NUMBER) for cell in self.v_hxc]
-        self.report_string += f'{OUTPUT_SEPARATOR}'.join(temp1) + "\n"
-        if overwrite_output:
-            conn = open(overwrite_output, "w", encoding="UTF-8")
-        else:
-            conn = open(f"results/{self.description}_log.dat", "w", encoding="UTF-8")
-        conn.write(self.report_string)
-        conn.close()
         return i
 
     def find_solution_as_root(self, starting_approximation=None):
@@ -227,7 +157,6 @@ class Molecule:
         print(model)
         return v_hxc
 
-    @log_calculate_ks_decorator
     def calculate_ks(self):
         self.v_s = self.v_hxc + self.v_ext
         self.h_ks = self.t + np.diag(self.v_s)
@@ -243,11 +172,9 @@ class Molecule:
         self.n_ks = np.copy(self.y_a.diagonal())
 
     def casci(self, oscillation_compensation=0, v_hxc_0=None):
-        self.report_string += "\tEntered CASCI\n"
         mu_imp_first = np.nan
         first_iteration = True
         for site_group in self.equiv_atom_groups.keys():
-            self.report_string += f"\t\tGroup {site_group} with sites {self.equiv_atom_groups[site_group]}\n"
             site_id = self.equiv_atom_groups[site_group][0]
 
             # Householder transforms impurity on index 0 so we have to make sure that impurity is on index 0:
@@ -264,7 +191,6 @@ class Molecule:
             mu_imp = self.v_hxc[[site_id]]  # Double parenthesis so I keep array, in future this will be list of
             # indices for block householder
 
-            self.log_casci(site_id, y_a_correct_imp, P, v, h_tilde, h_tilde_dimer)
             self.h_tilde_dimer[site_group] = h_tilde_dimer
 
             sol = sc_opt.root_scalar(cost_function_casci_root,
@@ -277,8 +203,6 @@ class Molecule:
                 mu_imp_first = mu_imp
 
             delta_mu_imp = mu_imp - mu_imp_first
-            self.report_string += f'\t\t\tOptimized chemical potential mu_imp: {mu_imp}, done in {function_calls}' \
-                                  f' iterations\n\t\t\tRelative change from impurity 0: {delta_mu_imp}'
             if v_hxc_0 is None:
                 # This means that if we keep v_hxc_0 equal to None,
                 # the algorithm does mu_imp -> v_hxc (mu_imp - mu_imp0 + mu_imp0)
@@ -296,9 +220,6 @@ class Molecule:
 
             first_iteration = False
 
-        self.report_string += f'\t\tHxc chemical potential in the end of a cycle:\n\t\t'
-        temp1 = ['{num:{dec}}'.format(num=cell, dec=OUTPUT_FORMATTING_NUMBER) for cell in self.v_hxc]
-        self.report_string += f'{OUTPUT_SEPARATOR}'.join(temp1) + "\n"
 
     def update_v_hxc(self, site_group, mu_imp, oscillation_compensation):
         global COMPENSATION_5_FACTOR
@@ -453,43 +374,6 @@ class Molecule:
         plt.title("Evolution of density in simulation")
         plt.show()
 
-    def log_casci(self, site_id, y_a_correct_imp, P, v, h_tilde, h_tilde_dimer):
-        self.report_string += f'\t\t\tNew 1RDM that is optained by replacing indices 0 and {site_id}\n\t\t\t'
-        temp1 = print_matrix(y_a_correct_imp, ret=True).replace('\n', '\n\t\t\t')[:-3]
-        self.report_string += temp1
-
-        self.report_string += "\t\t\tv vector\n\t\t\t"
-        temp1 = ['{num:{dec}}'.format(num=cell, dec=OUTPUT_FORMATTING_NUMBER) for cell in v[:, 0]]
-        self.report_string += f'{OUTPUT_SEPARATOR}'.join(temp1) + "\n"
-
-        self.report_string += f'\t\t\tP matrix\n\t\t\t'
-        temp1 = print_matrix(P, ret=True).replace('\n', '\n\t\t\t')[:-3]
-        self.report_string += temp1
-
-        self.report_string += f'\t\t\th tilde\n\t\t\t'
-        temp1 = print_matrix(h_tilde, ret=True).replace('\n', '\n\t\t\t')[:-3]
-        self.report_string += temp1
-
-        self.report_string += f'\t\t\th tilde dimer\n\t\t\t'
-        temp1 = print_matrix(h_tilde_dimer, ret=True).replace('\n', '\n\t\t\t')[:-3]
-        self.report_string += temp1
-
-        self.report_string += f'\t\t\tU0 parameter: {self.u[site_id]}\n'
-        self.report_string += f'\t\t\tStarting impurity chemical potential mu_imp: {-self.v_hxc[site_id]}\n'
-
-    def log_scl(self, old_density, mean_square_difference_density, i, tolerance, num_iter):
-        self.report_string += f"\tNew densities: "
-        temp1 = ['{num:{dec}}'.format(num=cell, dec=OUTPUT_FORMATTING_NUMBER) for cell in self.n_ks]
-        self.report_string += f'{OUTPUT_SEPARATOR}'.join(temp1) + "\n"
-        self.report_string += f"\tOld densities: "
-        if type(old_density) == float:
-            temp1 = ["inf"]
-        else:
-            temp1 = ['{num:{dec}}'.format(num=cell, dec=OUTPUT_FORMATTING_NUMBER) for cell in old_density]
-        self.report_string += f'{OUTPUT_SEPARATOR}'.join(temp1) + "\n"
-        self.report_string += f"\taverage square difference: {mean_square_difference_density}\n\tStopping" \
-                              f" condtition: ({mean_square_difference_density:8.4f}<{tolerance:8.4f}) OR " \
-                              f"({i + 1}>={num_iter})\n"
 
     def plot_hubbard_molecule(self):
         G = nx.Graph()
@@ -539,8 +423,6 @@ class Molecule:
         self.v_ext = np.array((), dtype=np.float64)
         self.equiv_atom_groups = dict()
         self.v_hxc = np.zeros(self.Ns, dtype=np.float64)  # Hartree exchange correlation potential
-        self.report_string += f'\n{"#" * 50}\nClear of data! From now on There is a new object \n' \
-                              f'{"#" * 50}\n\nObject (still) with {self.Ns} sites and {self.Ne} electrons\n'
         self.density_progress = []  # This object is used for gathering changes in the density over iterations
         self.v_hxc_progress = []
 
@@ -583,7 +465,6 @@ def cost_function_whole(v_hxc_approximation: np.array, mol_obj: Molecule) -> np.
             u_0_dimer = np.zeros((2, 2, 2, 2), dtype=np.float64)
             u_0_dimer[0, 0, 0, 0] += mol_obj.u[site_id]
 
-        mol_obj.log_casci(site_id, y_a_correct_imp, P, v, h_tilde, h_tilde_dimer)
         mol_obj.h_tilde_dimer[site_group] = h_tilde_dimer
 
         if first_iteration:
