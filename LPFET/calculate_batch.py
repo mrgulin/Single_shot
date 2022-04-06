@@ -22,76 +22,6 @@ import matplotlib as mpl
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 
-def generate_chain1(i, n_sites, U_param):
-    nodes_dict = dict()
-    edges_dict = dict()
-    eq_list = []
-    for j in range(n_sites):
-        nodes_dict[j] = {'v': (j - 2.5) * i, 'U': U_param}
-        if j != 5:
-            edges_dict[(j, j + 1)] = 1
-        eq_list.append([j])
-    return nodes_dict, edges_dict, eq_list
-
-
-def generate_chain2(i, n_sites, U_param):
-    nodes_dict = dict()
-    edges_dict = dict()
-    eq_list = []
-    for j in range(n_sites):
-        nodes_dict[j] = {'v': 0, 'U': U_param}
-        if j != 5:
-            edges_dict[(j, j + 1)] = 1
-        eq_list.append([j])
-    nodes_dict[0]['v'] = i
-    return nodes_dict, edges_dict, eq_list
-
-
-def generate_chain3(i, n_sites, U_param):
-    nodes_dict = dict()
-    edges_dict = dict()
-    eq_list = []
-    for j in range(n_sites):
-        nodes_dict[j] = {'v': i * (-1) ** j, 'U': U_param}
-        if j != 5:
-            edges_dict[(j, j + 1)] = 1
-        eq_list.append([j])
-    return nodes_dict, edges_dict, eq_list
-
-
-def generate_star1(i, n_sites, U_param):
-    nodes_dict = dict()
-    edges_dict = dict()
-    eq_list = [[0], list(range(1, n_sites))]
-    for j in range(n_sites):
-        nodes_dict[j] = {'v': i, 'U': U_param}
-        if j != 0:
-            edges_dict[(0, j)] = 1
-    nodes_dict[0]['v'] = 0
-
-    return nodes_dict, edges_dict, eq_list
-
-
-def generate_complete1(i, n_sites, U_param):
-    nodes_dict = dict()
-    edges_dict = dict()
-    eq_list = [[0]]
-    stop1 = False
-    for j in range(n_sites):
-        nodes_dict[j] = {'v': 0, 'U': U_param}
-        for k in range(j + 1, n_sites):
-            edges_dict[(j, k)] = 1
-        if j != 0 and not stop1:
-            if j != n_sites - j:
-                eq_list.append([j, n_sites - j])
-            else:
-                eq_list.append([j])
-                stop1 = True
-    nodes_dict[0]['v'] = i
-
-    return nodes_dict, edges_dict, eq_list
-
-
 def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecule_name, u_param=None, i_param=None,
                    delta_x=None, max_value=None, r_param=None):
     lpfet.COMPENSATION_5_FACTOR = 1
@@ -248,7 +178,7 @@ def calculate_graphs(folder_name, x, y, y_ref, y_simple, energy, energy_ref, v_h
         box = ax.get_position()
         ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
         ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-        plt.savefig(f'{folder_name}/v_hxc/progression-{x_i}.png', dpi=150, bbox_inches='tight')
+        # plt.savefig(f'{folder_name}/v_hxc/progression-{x_i}.png', dpi=150, bbox_inches='tight')
         plt.savefig(f'{folder_name}/v_hxc/progression-{x_i}.svg', dpi=150, bbox_inches='tight')
         plt.close(fig)
 
@@ -271,7 +201,7 @@ def calculate_graphs(folder_name, x, y, y_ref, y_simple, energy, energy_ref, v_h
         ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
         ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
         ax.set_ylim(0, 1)
-        plt.savefig(f'{folder_name}/occupation/progression_{x_i}.png', dpi=150, bbox_inches='tight')
+        # plt.savefig(f'{folder_name}/occupation/progression_{x_i}.png', dpi=150, bbox_inches='tight')
         plt.savefig(f'{folder_name}/occupation/progression_{x_i}.svg', dpi=150, bbox_inches='tight')
         plt.close(fig)
 
@@ -301,7 +231,7 @@ def calculate_graphs(folder_name, x, y, y_ref, y_simple, energy, energy_ref, v_h
     ax[1].plot(x, E['v_term'] - E_ref['v_term'], c=mpl.cm.get_cmap('tab10')(4))
     ax[1].plot(x, [0] * len(x), c='k', linestyle='--')
     fig.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-    plt.savefig(f'{folder_name}/Energy_errors.png', dpi=300, bbox_inches='tight')
+    # plt.savefig(f'{folder_name}/Energy_errors.png', dpi=300, bbox_inches='tight')
     plt.savefig(f'{folder_name}/Energy_errors.svg', dpi=300, bbox_inches='tight')
 
     # plot occupations
@@ -319,7 +249,7 @@ def calculate_graphs(folder_name, x, y, y_ref, y_simple, energy, energy_ref, v_h
                ncol=3, fancybox=True, shadow=True)
     ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
     ax.set_ylim(0, 1)
-    plt.savefig(f'{folder_name}/Densities.png', dpi=300, bbox_inches='tight')
+    # plt.savefig(f'{folder_name}/Densities.png', dpi=300, bbox_inches='tight')
     plt.savefig(f'{folder_name}/Densities.svg', dpi=300, bbox_inches='tight')
 
     # plot hxc potential
@@ -339,7 +269,7 @@ def calculate_graphs(folder_name, x, y, y_ref, y_simple, energy, energy_ref, v_h
                ncol=3, fancybox=True, shadow=True)
     ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
     ax.set_title("Trend of v_hxc. LPFET; values are corrected so averages match")
-    plt.savefig(f'{folder_name}/v_hxc_trend.png', dpi=300, bbox_inches='tight')
+    # plt.savefig(f'{folder_name}/v_hxc_trend.png', dpi=300, bbox_inches='tight')
     plt.savefig(f'{folder_name}/v_hxc_trend.svg', dpi=300, bbox_inches='tight')
 
     fig, ax = plt.subplots(1, 1, figsize=(6, 6))
@@ -350,19 +280,19 @@ def calculate_graphs(folder_name, x, y, y_ref, y_simple, energy, energy_ref, v_h
         ax.plot(x, E_per_site[:, site]['tot'] - E_ref_per_site[:, site]['tot'], c=mpl.cm.get_cmap('tab10')(site),
                 label=f'deviation on site {site}')
     fig.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-    fig.savefig(f'{folder_name}/Energy_errors_per_site.png', dpi=300, bbox_inches='tight')
+    # fig.savefig(f'{folder_name}/Energy_errors_per_site.png', dpi=300, bbox_inches='tight')
     fig.savefig(f'{folder_name}/Energy_errors_per_site.svg', dpi=300, bbox_inches='tight')
 
 
 if __name__ == "__main__":
     # generate_trend(6, 6, generate_chain2, 'chain2', u_param=5)
     # generate_trend(6, 6, generate_chain3, 'chain3', u_param=5, delta_x=0.4, max_value=4)
-    # generate_trend(6, 6, generate_star1, 'star1', u_param=5, delta_x=0.4, max_value=4)
+    # generate_trend(6, 6, essentials.generate_star1, 'star1', u_param=5, delta_x=0.4, max_value=4)
     # generate_trend(6, 6, generate_complete1, 'complete1', u_param=5, delta_x=0.1, max_value=3)
 
 
     # mol1 = lpfet.Molecule(6, 6, 'hehe')
-    # nodes_dict, edges_dict, eq_list = generate_chain1(2, 6, 10)
+    # nodes_dict, edges_dict, eq_list = essentials.generate_chain1(2, 6, 10)
     # t, v_ext, u = lpfet.generate_from_graph(nodes_dict, edges_dict)
     # mol1.add_parameters(u, t, v_ext, eq_list)
     # mol1.self_consistent_loop(50, 1e-4, oscillation_compensation=[5, 1])
@@ -375,9 +305,12 @@ if __name__ == "__main__":
     # mol_full.diagonalize_hamiltonian()
     # tuple1 = mol_full.calculate_v_hxc(mol1.v_hxc)
     # mol1.self_consistent_loop(num_iter=30, tolerance=1E-6, oscillation_compensation=[5, 1])
-    # time_l = generate_trend(6, 6, generate_chain1, 'chain1-root_r-0.5', i_param=1, r_param=0.5)
-    # time_l = generate_trend(6, 6, generate_chain1, 'chain1-root_r-0.2', i_param=1, r_param=0.2)
-    time_l = generate_trend(6, 6, generate_star1, 'star1', i_param=1)
+    # time_l = generate_trend(6, 6, essentials.generate_chain1, 'chain1-root_r-0.5', i_param=1, r_param=0.5)
+    # time_l = generate_trend(6, 6, essentials.generate_chain1, 'chain1-root_r-0.2', i_param=1, r_param=0.2)
+    # time_l = generate_trend(6, 2, essentials.generate_star1, 'star1', i_param=1)
+    time_l = generate_trend(6, 6, essentials.generate_star1, 'star1', i_param=1)
+    # time_l = generate_trend(6, 2, essentials.generate_complete1, 'complete1', i_param=3)
+    # time_l = generate_trend(6, 10, essentials.generate_complete1, 'complete1', i_param=3)
     essentials.print_matrix(time_l)
     print('iterations: ', lpfet.ITERATION_NUM)
 
