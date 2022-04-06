@@ -679,22 +679,12 @@ def generate_from_graph(sites, connections):
 
 
 if __name__ == "__main__":
-    i = 2
-    U_ = 1
     name = 'chain1'
     mol1 = Molecule(6, 6, name)
     mol_full = class_Quant_NBody.QuantNBody(6, 6)
     mol_full.build_operator_a_dagger_a()
     first = False
-    pmv = i
-    nodes_dict = dict()
-    edges_dict = dict()
-    eq_list = []
-    for j in range(6):
-        nodes_dict[j] = {'v': (j - 2.5) * i, 'U': 10}
-        if j != 6 - 1:
-            edges_dict[(j, j + 1)] = 1
-        eq_list.append([j])
+    nodes_dict, edges_dict, eq_list = essentials.generate_chain1(i=1, n_sites=6, U_param=1)
     t, v_ext, u = generate_from_graph(nodes_dict, edges_dict)
     mol1.add_parameters(u, t, v_ext, eq_list, 0.5)
     end_str = '\n'
