@@ -20,16 +20,51 @@ COMPENSATION_5_FACTOR2 = 0.5
 ITERATION_NUM = 0
 
 
-def change_indices(array_inp: np.array, site_id: int):
+def change_indices(array_inp: np.array, site_id: int, to_index: int = 0):
     array = np.copy(array_inp)
-    if site_id != 0:
+    if site_id != to_index:
         # We have to move impurity on the index 0
         if array_inp.ndim == 2:
-            array[:, [0, site_id]] = array[:, [site_id, 0]]
-            array[[0, site_id], :] = array[[site_id, 0], :]
+            array[:, [to_index, site_id]] = array[:, [site_id, to_index]]
+            array[[to_index, site_id], :] = array[[site_id, to_index], :]
         elif array_inp.ndim == 1:
-            array[[0, site_id]] = array[[site_id, 0]]
+            array[[to_index, site_id]] = array[[site_id, to_index]]
     return array
+
+
+def normalize_values(starting_vals):
+    # starting_vals = [0, 10000, -312, 10000, 0, 10000]
+    starting_vals2 = np.zeros(len(starting_vals), int) + 1
+    argsort = np.argsort(starting_vals)
+    for i in range(1, len(argsort)):
+        if not starting_vals[argsort[i]] > starting_vals[argsort[i - 1]] + 1e-4:
+            starting_vals2[i] = starting_vals2[i - 1]
+        else:
+            starting_vals2[i] = starting_vals2[i - 1] + 1
+    starting_vals2
+    for i in range(len(starting_vals)):
+        starting_vals[argsort[i]] = starting_vals2[i]
+    return np.array(starting_vals)
+
+
+def cangen(t, cannon_list):
+    order = normalize_values(cannon_list)
+    order_old = np.zeros(len(order), int) - 100
+    iter = 0
+    while iter < 15 or sum(order - order_old) != 0:
+
+        order_new = np.zeros(len(order), int)
+        for i in range(len(cannon_list)):
+            order_new[i] = order[i] * 100 + np.sum(t[i] * order)
+        iter += 1
+        order_old = order.copy()
+        order = normalize_values(order_new)
+    ret_list = []
+    for value in order:
+        new_val = tuple(np.where(order == value)[0])
+        if new_val not in ret_list:
+            ret_list.append(new_val)
+    return ret_list
 
 
 class Molecule:
@@ -44,7 +79,8 @@ class Molecule:
         self.u4d = np.array((), dtype=np.float64)
         self.t = np.array((), dtype=np.float64)  # 2D one electron Hamiltonian with all terms for i != j
         self.v_ext = np.array((), dtype=np.float64)  # 1D one electron Hamiltonian with all terms for i == j
-        self.equiv_atom_groups = dict()
+        self.equiv_atom_groups = []
+        self.equiv_atom_groups_reverse = []
         self.v_term = False
 
         # density matrix
@@ -82,7 +118,14 @@ class Molecule:
 
         self.compensation_ratio_dict = dict()
 
-    def add_parameters(self, u, t, v_ext, equiv_atom_group_list,
+        # Block Householder
+        self.blocks = [] # This 2d list tells us which sites are merged into which clusters [[c0s0, c0s1,..], [c1s0...]]
+        self.equiv_block_groups = []  # This 2d list tells us which blocks are equivalent. [0, 1], [2]] means that first
+        # block is same as second and 3rd is different
+        self.equiv_atoms_in_block = []  # This 2d list is important so we know which atoms have the same impurity
+        # potentials. This list is important because we have to optimize len(..) - 1 Hxc potentials
+
+    def add_parameters(self, u, t, v_ext,
                        v_term_repulsion_ratio: typing.Union[bool, float] = False):
         if len(u) != self.Ns or len(t) != self.Ns or len(v_ext) != self.Ns:
             raise f"Problem with size of matrices: U={len(u)}, t={len(t)}, v_ext={len(v_ext)}"
@@ -99,16 +142,64 @@ class Molecule:
                         if self.t[a, b] != 0:
                             self.u4d[a, a, b, b] = v_term_repulsion_ratio * 0.5 * (u[a] + u[b])
                             self.u4d[b, b, a, a] = v_term_repulsion_ratio * 0.5 * (u[a] + u[b])
-        if 0 not in equiv_atom_group_list[0]:
-            for i in range(len(equiv_atom_group_list)):
-                if 0 in equiv_atom_group_list[i]:
-                    temp_var = equiv_atom_group_list[0].copy()
-                    equiv_atom_group_list[0] = equiv_atom_group_list[i].copy()
-                    equiv_atom_group_list[i] = temp_var
-                    break
+        if not np.allclose(self.t, self.t.T):
+            raise Exception("t matrix should have been symmetric")
+        equiv_atom_group_list = cangen(t, np.array(u) * 100 + np.array(v_ext))
+        print(equiv_atom_group_list)
+        self.equiv_atom_groups = []
         for index, item in enumerate(equiv_atom_group_list):
-            self.equiv_atom_groups[index] = tuple(item)
+            self.equiv_atom_groups.append(tuple(item))
             self.compensation_ratio_dict[index] = COMPENSATION_5_FACTOR
+        self.equiv_atom_groups_reverse = np.zeros(self.Ns, int)
+        for group_id, atom_list in enumerate(self.equiv_atom_groups):
+            for site_id in atom_list:
+                self.equiv_atom_groups_reverse[site_id] = group_id
+
+    def prepare_for_block(self, blocks: typing.List[typing.List[int]]):
+        n_blocks = len(blocks)
+        if 0 not in blocks[0]:
+            print('site 0 must be in the first block')
+            return 0
+        self.blocks = blocks
+        normalized_blocks = [[int(self.equiv_atom_groups_reverse[j]) for j in i] for i in blocks]
+        ignored = []
+        equiv_block_list = []
+        for i in range(n_blocks):
+            if i in ignored:
+                continue
+            equiv_block_list.append([i])
+            for j in range(i + 1, n_blocks):
+                if i in ignored:
+                    continue
+                if sorted(normalized_blocks[i]) == sorted(normalized_blocks[j]):
+                    equiv_block_list[-1].append(j)
+                    ignored.append(j)
+        self.equiv_block_groups = equiv_block_list
+        print(self.equiv_block_groups)
+        ignore = []
+        equiv_atoms_in_block = []
+        for i in range(self.Ns):
+            if i in ignore:
+                continue
+            atom_group = int(self.equiv_atom_groups_reverse[i])
+            equivalent_atoms = self.equiv_atom_groups[atom_group]
+            block_i = [i in h for h in self.blocks].index(True)
+            block_group_i = [block_i in h for h in self.equiv_block_groups].index(True)
+            equiv_atoms_in_block.append([i])
+            for j in equivalent_atoms:
+                if i == j or j in ignore:
+                    continue
+                    # Only if i!=j and if i>j so we don't count things twice
+                block_j = [j in h for h in self.blocks].index(True)
+                block_group_j = [block_j in h for h in self.equiv_block_groups].index(True)
+                if block_group_j == block_group_i:
+                    equiv_atoms_in_block[-1].append(j)
+                    ignore.append(j)
+            ignore.append(i)
+        print(equiv_atoms_in_block)
+        self.equiv_atoms_in_block = equiv_atoms_in_block
+
+
 
     def self_consistent_loop(self, num_iter=10, tolerance=0.0001,
                              oscillation_compensation: typing.Union[int, typing.List[int]] = 0, v_hxc_0=None):
@@ -134,7 +225,7 @@ class Molecule:
     def find_solution_as_root(self, starting_approximation=None):
         if starting_approximation is None:
             starting_approximation = np.zeros(len(self.equiv_atom_groups) - 1, float)
-            for group_key, group_tuple in self.equiv_atom_groups.items():
+            for group_key, group_tuple in enumerate(self.equiv_atom_groups):
                 if group_key != 0:
                     group_element_site = group_tuple[0]
                     starting_approximation[group_key - 1] = (self.v_ext[0] - self.v_ext[group_element_site]) * 0.5
@@ -167,8 +258,8 @@ class Molecule:
     def casci(self, oscillation_compensation=0, v_hxc_0=None):
         mu_imp_first = np.nan
         first_iteration = True
-        for site_group in self.equiv_atom_groups.keys():
-            site_id = self.equiv_atom_groups[site_group][0]
+        for site_group, group_tuple in enumerate(self.equiv_atom_groups):
+            site_id = group_tuple[0]
 
             # Householder transforms impurity on index 0 so we have to make sure that impurity is on index 0:
             y_a_correct_imp = change_indices(self.y_a, site_id)
@@ -374,7 +465,7 @@ class Molecule:
         edge_labels = dict()
         for i in range(self.Ns):
             node_string = f"U={self.u[i]:.1f}\nv_ext={self.v_ext[i]:.3f}"
-            for key, value in self.equiv_atom_groups.items():
+            for key, value in enumerate(self.equiv_atom_groups):
                 if i in value:
                     group_id = key
                     break
@@ -411,7 +502,7 @@ class Molecule:
         self.u = np.array((), dtype=np.float64)
         self.t = np.array((), dtype=np.float64)
         self.v_ext = np.array((), dtype=np.float64)
-        self.equiv_atom_groups = dict()
+        self.equiv_atom_groups = []
         self.v_hxc = np.zeros(self.Ns, dtype=np.float64)  # Hartree exchange correlation potential
         self.density_progress = []  # This object is used for gathering changes in the density over iterations
         self.v_hxc_progress = []
@@ -421,7 +512,7 @@ class Molecule:
 
 def cost_function_whole(v_hxc_approximation: np.array, mol_obj: Molecule) -> np.array:
     mol_obj.v_hxc = np.zeros(mol_obj.Ns, float)
-    for group_id, group_site_tuple in mol_obj.equiv_atom_groups.items():
+    for group_id, group_site_tuple in enumerate(mol_obj.equiv_atom_groups):
         if group_id != 0:
             for site_id_i in group_site_tuple:
                 mol_obj.v_hxc[site_id_i] = v_hxc_approximation[group_id - 1]
@@ -432,8 +523,8 @@ def cost_function_whole(v_hxc_approximation: np.array, mol_obj: Molecule) -> np.
     mu_imp_first = np.nan
     first_iteration = True
     output_index = 0
-    for site_group in mol_obj.equiv_atom_groups.keys():
-        site_id = mol_obj.equiv_atom_groups[site_group][0]
+    for site_group, group_tuple in enumerate(mol_obj.equiv_atom_groups):
+        site_id = group_tuple[0]
         y_a_correct_imp = change_indices(mol_obj.y_a, site_id)
         p, v = Quant_NBody.householder_transformation(y_a_correct_imp)
         h_tilde = p @ (change_indices(mol_obj.t, site_id) + np.diag(change_indices(mol_obj.v_s, site_id))) @ p

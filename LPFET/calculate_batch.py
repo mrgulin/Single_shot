@@ -75,12 +75,12 @@ def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecul
             mol1.clear_object(name)
         first = False
         print(f'\n\n{i:.1f}, {i / max(x) * 100:.1f}%: ', end=' ')
-        nodes_dict, edges_dict, eq_list = model_function(i_param, n_sites, u_param)
+        nodes_dict, edges_dict = model_function(i_param, n_sites, u_param)
         t, v_ext, u = lpfet.generate_from_graph(nodes_dict, edges_dict)
         mol1.report_string = f'Object with {n_sites} sites and {n_electron} electrons\n'
         with open(f"{folder_name}systems.txt", "a") as my_file:
             my_file.write(f"\n\n{repr(t)}\n{repr(v_ext)}\n{repr(u)}")
-        mol1.add_parameters(u, t, v_ext, eq_list, r_param)
+        mol1.add_parameters(u, t, v_ext, r_param)
         time1 = datetime.now()
         # mol1.self_consistent_loop(num_iter=50, tolerance=1E-6, oscillation_compensation=[5, 1], v_hxc_0=0)
         mol1.find_solution_as_root(starting_approximation_c_hxc)
