@@ -11,12 +11,10 @@ import sys
 from sklearn.linear_model import LinearRegression
 from typing import Union
 import typing
-
-sys.path.extend(['/mnt/c/Users/tinc9/Documents/CNRS-offline/', '../'])
-import essentials
+from .. import essentials
 import Quant_NBody  # Folder Quant_NBody has to be in the sys.path or installed as package.
 import Quant_NBody.class_Quant_NBody as class_Quant_NBody
-from essentials import OUTPUT_SEPARATOR, OUTPUT_FORMATTING_NUMBER, print_matrix, generate_1rdm
+from ..essentials import OUTPUT_SEPARATOR, OUTPUT_FORMATTING_NUMBER, print_matrix, generate_1rdm
 
 COMPENSATION_1_RATIO = 0.5  # for the Molecule.update_v_hxc
 COMPENSATION_MAX_ITER_HISTORY = 4
@@ -77,7 +75,6 @@ class Molecule:
         self.embedded_mol = class_Quant_NBody.QuantNBody(2, 2)
         self.embedded_mol.build_operator_a_dagger_a()
 
-
         self.density_progress = []  # This object is used for gathering changes in the density over iterations
         self.v_hxc_progress = []
 
@@ -116,7 +113,7 @@ class Molecule:
             self.equiv_atom_groups[index] = tuple(item)
             self.compensation_ratio_dict[index] = COMPENSATION_5_FACTOR
 
-    def self_consistent_loop(self, num_iter=10, tolerance=0.0001, overwrite_output="",
+    def self_consistent_loop(self, num_iter=10, tolerance=0.0001,
                              oscillation_compensation: typing.Union[int, typing.List[int]] = 0, v_hxc_0=None):
         old_density = np.inf
         old_v_hxc = np.inf
@@ -130,7 +127,6 @@ class Molecule:
             print(f"\nLoop {i}", end=', ')
             mean_square_difference_density = np.average(np.square(self.n_ks - old_density))
             max_difference_v_hxc = np.max(np.abs(self.v_hxc - old_v_hxc))
-
 
             if mean_square_difference_density < tolerance and max_difference_v_hxc < 0.01:
                 break
@@ -219,7 +215,6 @@ class Molecule:
                 self.v_term_repulsion[every_site_id] = v_term_repulsion_i
 
             first_iteration = False
-
 
     def update_v_hxc(self, site_group, mu_imp, oscillation_compensation):
         global COMPENSATION_5_FACTOR
@@ -374,9 +369,8 @@ class Molecule:
         plt.title("Evolution of density in simulation")
         plt.show()
 
-
     def plot_hubbard_molecule(self):
-        G = nx.Graph()
+        g = nx.Graph()
         colors = ['lightgrey', 'mistyrose', 'lightcyan', 'thistle', 'springgreen', 'yellow', 'cyan', 'magenta',
                   'orange']
         color_map = []
@@ -390,20 +384,20 @@ class Molecule:
                     break
             else:
                 group_id = -1
-            G.add_nodes_from([(i, {'color': colors[group_id]})])
+            g.add_nodes_from([(i, {'color': colors[group_id]})])
             labeldict[i] = node_string
             for j in range(i, self.Ns):
                 if self.t[i, j] != 0:
                     edge_string = f"{self.t[i, j]}"
-                    G.add_edge(i, j)
+                    g.add_edge(i, j)
                     edge_labels[(i, j)] = edge_string
-        for i in G.nodes:
-            color_map.append(G.nodes[i]['color'])
+        for i in g.nodes:
+            color_map.append(g.nodes[i]['color'])
         fig, ax = plt.subplots(1, 1)
-        position = nx.spring_layout(G)
-        nx.draw(G, pos=position, ax=ax, labels=labeldict, with_labels=True, node_color=color_map, node_size=5000,
+        position = nx.spring_layout(g)
+        nx.draw(g, pos=position, ax=ax, labels=labeldict, with_labels=True, node_color=color_map, node_size=5000,
                 font_weight='bold')
-        nx.draw_networkx_edge_labels(G, position, edge_labels)
+        nx.draw_networkx_edge_labels(g, position, edge_labels)
         ax.set_xlim(*np.array(ax.get_xlim()) * 1.3)
         ax.set_ylim(*np.array(ax.get_ylim()) * 1.3)
         print(f"results/{self.description}_molecule.png")
@@ -495,8 +489,8 @@ def cost_function_whole(v_hxc_approximation: np.array, mol_obj: Molecule) -> np.
     #       f" {''.join(['{num:{dec}}'.format(num=cell, dec='+10.4f') for cell in output_array])} "
     #       f" (RMS = {rms})")
     print(
-        f"for input {''.join(['{num:{dec}}'.format(num=cell, dec='+13.3e') for cell in mol_obj.v_hxc[:2]])} we get error"
-        f" {''.join(['{num:{dec}}'.format(num=cell, dec='+13.3e') for cell in output_array[:2]])} "
+        f"for input {''.join(['{num:{dec}}'.format(num=cell, dec='+13.3e') for cell in mol_obj.v_hxc[:2]])}"
+        f" we get error {''.join(['{num:{dec}}'.format(num=cell, dec='+13.3e') for cell in output_array[:2]])} "
         f" (RMS = {rms})")
     # if rms < 1e-4:
     #     return np.zeros(len(mol_obj.equiv_atom_groups) - 1, float)
@@ -545,14 +539,14 @@ def generate_from_graph(sites, connections):
     t = np.zeros((n_sites, n_sites), dtype=np.float64)
     v = np.zeros(n_sites, dtype=np.float64)
     u = np.zeros(n_sites, dtype=np.float64)
-    for id, params in sites.items():
+    for id1, params in sites.items():
         if 'U' in params:
-            u[id] = params['U']
+            u[id1] = params['U']
         elif 'u' in params:
-            u[id] = params['u']
+            u[id1] = params['u']
         else:
             raise "Problem with params: " + params
-        v[id] = params['v']
+        v[id1] = params['v']
     for pair, param in connections.items():
         t[pair[0], pair[1]] = -param
         t[pair[1], pair[0]] = -param
