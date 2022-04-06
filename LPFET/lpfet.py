@@ -22,6 +22,7 @@ COMPENSATION_1_RATIO = 0.5  # for the Molecule.update_v_hxc
 COMPENSATION_MAX_ITER_HISTORY = 4
 COMPENSATION_5_FACTOR = 1
 COMPENSATION_5_FACTOR2 = 0.5
+ITERATION_NUM = 0
 
 
 def change_indices(array_inp: np.array, site_id: int):
@@ -78,8 +79,8 @@ def log_calculate_ks_decorator(func):
 
 
 def log_add_parameters_decorator(func):
-    def wrapper_func(self, u, t, v_ext, equiv_atom_group_list):
-        ret_val = func(self, u, t, v_ext, equiv_atom_group_list)
+    def wrapper_func(self, u, t, v_ext, equiv_atom_group_list, v_term_repulsion_ratio):
+        ret_val = func(self, u, t, v_ext, equiv_atom_group_list, v_term_repulsion_ratio)
         self.report_string += f"add_parameters:\n\tU_iiii\n\t"
         temp1 = ['{num:{dec}}'.format(num=cell, dec=OUTPUT_FORMATTING_NUMBER) for cell in self.u]
         self.report_string += f'{OUTPUT_SEPARATOR}'.join(temp1)
@@ -101,9 +102,11 @@ class Molecule:
 
         # Parameters for the system
         self.u = np.array((), dtype=np.float64)  # for the start only 1D array and not 4d tensor
+        self.u4d = np.array((), dtype=np.float64)
         self.t = np.array((), dtype=np.float64)  # 2D one electron Hamiltonian with all terms for i != j
         self.v_ext = np.array((), dtype=np.float64)  # 1D one electron Hamiltonian with all terms for i == j
         self.equiv_atom_groups = dict()
+        self.v_term = False
 
         # density matrix
         self.y_a = np.array((), dtype=np.float64)  # y --> gamma, a --> alpha so this indicates it is only per one spin
@@ -121,6 +124,7 @@ class Molecule:
         self.kinetic_contributions = np.zeros(self.Ns, dtype=np.float64)
         # This is where \hat t^{(i)} are going to be written
         self.onsite_repulsion = np.zeros(self.Ns, dtype=np.float64)
+        self.v_term_repulsion = np.zeros(self.Ns, dtype=np.float64)
         self.energy_contributions = tuple()
         self.per_site_energy = np.array(())
 
@@ -142,12 +146,23 @@ class Molecule:
         self.compensation_ratio_dict = dict()
 
     @log_add_parameters_decorator
-    def add_parameters(self, u, t, v_ext, equiv_atom_group_list):
+    def add_parameters(self, u, t, v_ext, equiv_atom_group_list,
+                       v_term_repulsion_ratio: typing.Union[bool, float] = False):
         if len(u) != self.Ns or len(t) != self.Ns or len(v_ext) != self.Ns:
             raise f"Problem with size of matrices: U={len(u)}, t={len(t)}, v_ext={len(v_ext)}"
         self.u = u
         self.t = t
         self.v_ext = v_ext
+        self.u4d = np.zeros((self.Ns, self.Ns, self.Ns, self.Ns))
+        for i in range(self.Ns):
+            self.u4d[i, i, i, i] = self.u[i]
+            if v_term_repulsion_ratio:
+                self.v_term = True
+                for a in range(len(self.t)):
+                    for b in range(len(self.t)):
+                        if self.t[a, b] != 0:
+                            self.u4d[a, a, b, b] = v_term_repulsion_ratio * 0.5 * (u[a] + u[b])
+                            self.u4d[b, b, a, a] = v_term_repulsion_ratio * 0.5 * (u[a] + u[b])
         if 0 not in equiv_atom_group_list[0]:
             for i in range(len(equiv_atom_group_list)):
                 if 0 in equiv_atom_group_list[i]:
@@ -195,13 +210,15 @@ class Molecule:
 
     def find_solution_as_root(self, starting_approximation=None):
         if starting_approximation is None:
-            approx1 = self.v_ext.copy()
-            approx1 -= approx1[0]
-            starting_approximation = approx1[1:] * (-0.5)
+            starting_approximation = np.zeros(len(self.equiv_atom_groups) - 1, float)
+            for group_key, group_tuple in self.equiv_atom_groups.items():
+                if group_key != 0:
+                    group_element_site = group_tuple[0]
+                    starting_approximation[group_key - 1] = (self.v_ext[0] - self.v_ext[group_element_site]) * 0.5
         elif len(starting_approximation) != len(self.equiv_atom_groups) - 1:
             raise Exception('Wrong length of the starting approximation')
         model = scipy.optimize.root(cost_function_whole, starting_approximation,
-                                    args=(self,), options={'xtol': 1e-3, 'eps': 1e-3}, method='df-sane')
+                                    args=(self,), options={'fatol': 2e-3}, method='df-sane')
         if not model.success or np.sum(np.square(model.fun)) > 0.01:
             print("Didn't converge :c ")
             return False
@@ -261,11 +278,14 @@ class Molecule:
                 v_hxc_0 = mu_imp_first
             self.update_v_hxc(site_group, v_hxc_0 + delta_mu_imp, oscillation_compensation)
 
-            on_site_repulsion_i = self.embedded_mol.calculate_2rdm_fh(index=0)[0, 0, 0, 0] * u_0_dimer[0, 0, 0, 0]
+            two_rdm = self.embedded_mol.calculate_2rdm_fh(index=0)
+            on_site_repulsion_i = two_rdm[0, 0, 0, 0] * u_0_dimer[0, 0, 0, 0]
+            v_term_repulsion_i = np.sum(two_rdm * u_0_dimer) - on_site_repulsion_i
             for every_site_id in self.equiv_atom_groups[site_group]:
                 self.kinetic_contributions[every_site_id] = 2 * h_tilde[1, 0] * self.embedded_mol.one_rdm[1, 0]
                 self.onsite_repulsion[every_site_id] = on_site_repulsion_i
                 self.imp_potential[every_site_id] = mu_imp
+                self.v_term_repulsion[every_site_id] = v_term_repulsion_i
 
             first_iteration = False
 
@@ -351,25 +371,29 @@ class Molecule:
             self.v_hxc[every_site_id] = mu_imp
 
     def calculate_energy(self, silent=False):
-        per_site_array = np.zeros(self.Ns, dtype=[('tot', float), ('kin', float), ('v_ext', float), ('u', float)])
+        per_site_array = np.zeros(self.Ns, dtype=[('tot', float), ('kin', float), ('v_ext', float), ('u', float),
+                                                  ('v_term', float)])
         per_site_array['kin'] = self.kinetic_contributions
         per_site_array['v_ext'] = 2 * self.v_ext * self.n_ks
         per_site_array['u'] = self.onsite_repulsion
-        per_site_array['tot'] = np.sum(np.array(per_site_array[['kin', 'v_ext', 'u']].tolist()), axis=1)
+        per_site_array['v_term'] = self.v_term_repulsion
+        per_site_array['tot'] = np.sum(np.array(per_site_array[['kin', 'v_ext', 'u', 'v_term']].tolist()), axis=1)
         kinetic_contribution = np.sum(per_site_array['kin'])
         v_ext_contribution = np.sum(per_site_array['v_ext'])
         u_contribution = np.sum(self.onsite_repulsion)
-        total_energy = kinetic_contribution + v_ext_contribution + u_contribution
+        v_term_contribution = np.sum(self.v_term_repulsion)
+        total_energy = kinetic_contribution + v_ext_contribution + u_contribution + v_term_contribution
         self.energy_contributions = (total_energy, kinetic_contribution, v_ext_contribution,
-                                     u_contribution)
+                                     u_contribution, v_term_contribution)
         self.per_site_energy = per_site_array
         if not silent:
             print(f'\n{"site":30s}{" ".join([f"{i:9d}" for i in range(self.Ns)])}{"total":>12s}\n{"Kinetic energy":30s}'
                   f'{" ".join([f"{i:9.4f}" for i in self.kinetic_contributions])}{kinetic_contribution:12.7f}\n'
                   f'{"External potential energy":30s}{" ".join([f"{i:9.4f}" for i in per_site_array["v_ext"]])}'
                   f'{v_ext_contribution:12.7f}\n{"On-site repulsion":30s}'
-                  f'{" ".join([f"{i:9.4f}" for i in self.onsite_repulsion])}{u_contribution:12.7f}\n{"Occupations":30s}'
-                  f'{" ".join([f"{i:9.4f}" for i in self.n_ks * 2])}{np.sum(self.n_ks) * 2:12.7f}')
+                  f'{" ".join([f"{i:9.4f}" for i in self.onsite_repulsion])}{u_contribution:12.7f}\n'
+                  f'{"V-term repulsion":30s}{" ".join([f"{i:9.4f}" for i in self.v_term_repulsion])}{v_term_contribution:12.7f}\n'
+                  f'{"Occupations":30s}{" ".join([f"{i:9.4f}" for i in self.n_ks * 2])}{np.sum(self.n_ks) * 2:12.7f}')
             print(f'{"_" * 20}\nTotal energy:{total_energy}')
 
         return total_energy
@@ -381,10 +405,7 @@ class Molecule:
         else:
             mol_full = class_Quant_NBody.QuantNBody(self.Ns, self.Ne)
             mol_full.build_operator_a_dagger_a()
-        u_4d = np.zeros((self.Ns, self.Ns, self.Ns, self.Ns))
-        for i in range(self.Ns):
-            u_4d[i, i, i, i] = self.u[i]
-        mol_full.build_hamiltonian_fermi_hubbard(self.t + np.diag(self.v_ext), u_4d)
+        mol_full.build_hamiltonian_fermi_hubbard(self.t + np.diag(self.v_ext), self.u4d)
         mol_full.diagonalize_hamiltonian()
         y_ab = mol_full.calculate_1rdm()
         densities = y_ab.diagonal()
@@ -394,20 +415,27 @@ class Molecule:
         u_contribution = total_energy - kinetic_contribution - v_ext_contribution
 
         if calculate_per_site:
-            per_site_array = np.zeros(self.Ns, dtype=[('tot', float), ('kin', float), ('v_ext', float), ('u', float)])
-            on_site_repulsion_array = u_4d * mol_full.calculate_2rdm_fh(index=0)
+            per_site_array = np.zeros(self.Ns, dtype=[('tot', float), ('kin', float), ('v_ext', float), ('u', float),
+                                                      ('v_term', float)])
+            on_site_repulsion_array = self.u4d * mol_full.calculate_2rdm_fh(index=0)
             t_multiplied_matrix = y_ab * self.t * 2
             for site in range(self.Ns):
                 per_site_array[site]['v_ext'] = 2 * self.v_ext[site] * densities[site]
                 per_site_array[site]['u'] = on_site_repulsion_array[site, site, site, site]
                 per_site_array[site]['kin'] = np.sum(t_multiplied_matrix[site])
+                per_site_array[site]['v_term'] = 0.5 * (np.sum(on_site_repulsion_array[site, site, :, :]) +
+                                                        np.sum(on_site_repulsion_array[:, :, site, site])) - \
+                                                 on_site_repulsion_array[site, site, site, site]
                 per_site_array[site]['tot'] = sum(per_site_array[site])
+            u_contribution = np.sum(per_site_array['u'])
+            v_term_contribution = np.sum(per_site_array['v_term'])
+
             return y_ab, mol_full, (total_energy, kinetic_contribution, v_ext_contribution,
-                                    u_contribution), per_site_array
+                                    u_contribution, v_term_contribution), per_site_array
         print("FCI densities (per spin):", densities)
         print(f'FCI energy: {mol_full.ei_val[0]}')
         return y_ab, mol_full, (total_energy, kinetic_contribution, v_ext_contribution,
-                                u_contribution)
+                                u_contribution, 0)
 
     def plot_density_evolution(self):
         self.density_progress = np.array(self.density_progress)
@@ -513,7 +541,11 @@ class Molecule:
 
 
 def cost_function_whole(v_hxc_approximation: np.array, mol_obj: Molecule) -> np.array:
-    mol_obj.v_hxc = np.insert(v_hxc_approximation, 0, 0, axis=0)
+    mol_obj.v_hxc = np.zeros(mol_obj.Ns, float)
+    for group_id, group_site_tuple in mol_obj.equiv_atom_groups.items():
+        if group_id != 0:
+            for site_id_i in group_site_tuple:
+                mol_obj.v_hxc[site_id_i] = v_hxc_approximation[group_id - 1]
     mol_obj.v_hxc_progress.append(mol_obj.v_hxc)
     mol_obj.calculate_ks()
     mol_obj.density_progress.append(mol_obj.n_ks)
@@ -528,8 +560,21 @@ def cost_function_whole(v_hxc_approximation: np.array, mol_obj: Molecule) -> np.
         h_tilde = P @ (change_indices(mol_obj.t, site_id) + np.diag(change_indices(mol_obj.v_s, site_id))) @ P
 
         h_tilde_dimer = h_tilde[:2, :2]
-        u_0_dimer = np.zeros((2, 2, 2, 2), dtype=np.float64)
-        u_0_dimer[0, 0, 0, 0] += mol_obj.u[site_id]
+        if mol_obj.v_term:
+            u4d = np.zeros(mol_obj.u4d.shape)
+            u4d[site_id, site_id, :, :] += mol_obj.u4d[site_id, site_id, :, :] / 2
+            u4d[:, :, site_id, site_id] += mol_obj.u4d[:, :, site_id, site_id] / 2
+            if site_id == 0:
+                u4d_correct_indices = u4d
+            else:
+                mask = np.arange(mol_obj.Ns)
+                mask[0] = site_id
+                mask[site_id] = 0
+                u4d_correct_indices = u4d[:, :, :, mask][:, :, mask, :][:, mask, :, :][mask, :, :, :]
+            u_0_dimer = np.einsum('ap, bq, cr, ds, abcd -> pqrs', P, P, P, P, u4d_correct_indices)[:2, :2, :2, :2]
+        else:
+            u_0_dimer = np.zeros((2, 2, 2, 2), dtype=np.float64)
+            u_0_dimer[0, 0, 0, 0] += mol_obj.u[site_id]
 
         mol_obj.log_casci(site_id, y_a_correct_imp, P, v, h_tilde, h_tilde_dimer)
         mol_obj.h_tilde_dimer[site_group] = h_tilde_dimer
@@ -539,7 +584,7 @@ def cost_function_whole(v_hxc_approximation: np.array, mol_obj: Molecule) -> np.
                 raise Exception("Unexpected behaviour: First impurity site should have been the 0th site")
             sol = sc_opt.root_scalar(cost_function_casci_root,
                                      args=(mol_obj.embedded_mol, h_tilde_dimer, u_0_dimer, mol_obj.n_ks[site_id]),
-                                     bracket=[-0.1, 15], method='brentq', options={'xtol': 1e-6})
+                                     bracket=[-5, 15], method='brentq', options={'xtol': 1e-6})
             mu_imp, function_calls = sol.root, sol.function_calls
             mu_imp_first = mu_imp
         else:
@@ -548,22 +593,28 @@ def cost_function_whole(v_hxc_approximation: np.array, mol_obj: Molecule) -> np.
                                                mol_obj.n_ks[site_id])
             output_array[output_index] = error_i
             output_index += 1
-
-        on_site_repulsion_i = mol_obj.embedded_mol.calculate_2rdm_fh(index=0)[0, 0, 0, 0] * u_0_dimer[0, 0, 0, 0]
+        two_rdm = mol_obj.embedded_mol.calculate_2rdm_fh(index=0)
+        on_site_repulsion_i = two_rdm[0, 0, 0, 0] * u_0_dimer[0, 0, 0, 0]
+        v_term_repulsion_i = np.sum(two_rdm * u_0_dimer) - on_site_repulsion_i
         for every_site_id in mol_obj.equiv_atom_groups[site_group]:
             mol_obj.kinetic_contributions[every_site_id] = 2 * h_tilde[1, 0] * mol_obj.embedded_mol.one_rdm[1, 0]
             mol_obj.onsite_repulsion[every_site_id] = on_site_repulsion_i
             mol_obj.imp_potential[every_site_id] = mu_imp
+            mol_obj.v_term_repulsion[every_site_id] = v_term_repulsion_i
         first_iteration = False
     rms = np.sqrt(np.mean(np.square(output_array)))
-    print(f"for input {''.join(['{num:{dec}}'.format(num=cell, dec='+10.4f') for cell in mol_obj.v_hxc])} we get error"
-          f" {''.join(['{num:{dec}}'.format(num=cell, dec='+10.4f') for cell in output_array])} "
-          f" (RMS = {rms})")
-    if rms < 1e-4:
-        return np.zeros(len(mol_obj.equiv_atom_groups) - 1, float)
+    # print(f"for input {''.join(['{num:{dec}}'.format(num=cell, dec='+10.4f') for cell in mol_obj.v_hxc])} we get error"
+    #       f" {''.join(['{num:{dec}}'.format(num=cell, dec='+10.4f') for cell in output_array])} "
+    #       f" (RMS = {rms})")
+    print(
+        f"for input {''.join(['{num:{dec}}'.format(num=cell, dec='+13.3e') for cell in mol_obj.v_hxc[:2]])} we get error"
+        f" {''.join(['{num:{dec}}'.format(num=cell, dec='+13.3e') for cell in output_array[:2]])} "
+        f" (RMS = {rms})")
+    # if rms < 1e-4:
+    #     return np.zeros(len(mol_obj.equiv_atom_groups) - 1, float)
     return output_array
 
-ITERATION_NUM = 0
+
 def cost_function_casci_root(mu_imp, embedded_mol, h_tilde_dimer, u_0_dimer, desired_density):
     # mu_imp = mu_imp[0]
     global ITERATION_NUM
@@ -634,11 +685,11 @@ if __name__ == "__main__":
     eq_list = []
     for j in range(6):
         nodes_dict[j] = {'v': (j - 2.5) * i, 'U': 10}
-        if j != 6-1:
+        if j != 6 - 1:
             edges_dict[(j, j + 1)] = 1
         eq_list.append([j])
     t, v_ext, u = generate_from_graph(nodes_dict, edges_dict)
-    mol1.add_parameters(u, t, v_ext, eq_list)
+    mol1.add_parameters(u, t, v_ext, eq_list, 0.5)
     end_str = '\n'
     print(mol1.v_ext)
     mol1.v_hxc = np.zeros(mol1.Ns)
@@ -649,4 +700,5 @@ if __name__ == "__main__":
     mol1.find_solution_as_root()
     end1 = datetime.now()
     end_str += str(end1 - start1) + '\n'
+    mol1.compare_densities_FCI(False, True)
     print(end_str, ITERATION_NUM)

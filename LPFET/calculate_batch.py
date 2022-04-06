@@ -93,7 +93,7 @@ def generate_complete1(i, n_sites, U_param):
 
 
 def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecule_name, u_param=None, i_param=None,
-                   delta_x=None, max_value=None):
+                   delta_x=None, max_value=None, r_param=None):
     lpfet.COMPENSATION_5_FACTOR = 1
     lpfet.COMPENSATION_5_FACTOR2 = 1
     lpfet.COMPENSATION_1_RATIO = 0.25
@@ -137,7 +137,8 @@ def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecul
     energy_per_site = []
     energy_ref_per_site = []
     correction_dict_list = []
-    old_v_hxc = np.zeros(n_sites)
+    old_v_hxc = None
+    starting_approximation_c_hxc = None
     time_list = []
     with open(f"{folder_name}systems.txt", "w") as myfile:
         myfile.write("")
@@ -150,8 +151,11 @@ def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecul
             i_param = i
             x_label = 'i (delta v_ext)'
         if not first:
+            approx_len = len(mol1.equiv_atom_groups) - 1
+            starting_approximation_c_hxc = np.zeros(approx_len)
+            for ind in range(approx_len):
+                starting_approximation_c_hxc[ind] = old_v_hxc[mol1.equiv_atom_groups[ind + 1][0]]
             mol1.clear_object(name)
-            mol1.v_hxc = old_v_hxc
         first = False
         print(f'\n\n{i:.1f}, {i / max(x) * 100:.1f}%: ', end=' ')
         nodes_dict, edges_dict, eq_list = model_function(i_param, n_sites, u_param)
@@ -159,14 +163,14 @@ def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecul
         mol1.report_string = f'Object with {n_sites} sites and {n_electron} electrons\n'
         with open(f"{folder_name}systems.txt", "a") as myfile:
             myfile.write(f"\n\n{repr(t)}\n{repr(v_ext)}\n{repr(u)}")
-        mol1.add_parameters(u, t, v_ext, eq_list)
+        mol1.add_parameters(u, t, v_ext, eq_list, r_param)
         time1 = datetime.now()
         # mol1.self_consistent_loop(num_iter=50, tolerance=1E-6, oscillation_compensation=[5, 1],
         #                           overwrite_output=folder_name + 'log.txt', v_hxc_0=0)
-        mol1.find_solution_as_root(old_v_hxc[1:])
+        mol1.find_solution_as_root(starting_approximation_c_hxc)
         time2 = datetime.now()
         # mol1.optimize_solution(5, 0.2)
-        mol1.calculate_energy(True)
+        mol1.calculate_energy(False)
         time3 = datetime.now()
         correction_dict_list.append(mol1.oscillation_correction_dict)
         y.append(mol1.density_progress)
@@ -207,8 +211,9 @@ def calculate_graphs(folder_name, x, y, y_ref, y_simple, energy, energy_ref, v_h
     y_ref = np.array(y_ref)
     y_simple = np.array(y_simple)
 
-    E = np.array(energy, dtype=[('tot', float), ('kin', float), ('v_ext', float), ('u', float)])
-    E_ref = np.array(energy_ref, dtype=[('tot', float), ('kin', float), ('v_ext', float), ('u', float)])
+    E = np.array(energy, dtype=[('tot', float), ('kin', float), ('v_ext', float), ('u', float),  ('v_term', float)])
+    E_ref = np.array(energy_ref, dtype=[('tot', float), ('kin', float), ('v_ext', float), ('u', float),
+                                        ('v_term', float)])
     E_per_site = np.array(energy_per_site)
     E_ref_per_site = np.array(energy_ref_per_site)
     v_hxc_ref_progress = np.array(v_hxc_ref_progress)
@@ -284,6 +289,8 @@ def calculate_graphs(folder_name, x, y, y_ref, y_simple, energy, energy_ref, v_h
     ax[0].plot(x, E_ref['u'], c=mpl.cm.get_cmap('tab10')(2), linestyle='--')
     ax[0].plot(x, E['v_ext'], c=mpl.cm.get_cmap('tab10')(3), label='Ext potential contribution')
     ax[0].plot(x, E_ref['v_ext'], c=mpl.cm.get_cmap('tab10')(3), linestyle='--')
+    ax[0].plot(x, E['v_term'], c=mpl.cm.get_cmap('tab10')(4), label='v_term contribution')
+    ax[0].plot(x, E_ref['v_term'], c=mpl.cm.get_cmap('tab10')(4), linestyle='--')
     plt.xlabel(x_label)
     ax[0].set_ylabel('energy')
     ax[1].set_ylabel('Error energy')
@@ -291,6 +298,7 @@ def calculate_graphs(folder_name, x, y, y_ref, y_simple, energy, energy_ref, v_h
     ax[1].plot(x, E['kin'] - E_ref['kin'], c=mpl.cm.get_cmap('tab10')(1))
     ax[1].plot(x, E['u'] - E_ref['u'], c=mpl.cm.get_cmap('tab10')(2))
     ax[1].plot(x, E['v_ext'] - E_ref['v_ext'], c=mpl.cm.get_cmap('tab10')(3))
+    ax[1].plot(x, E['v_term'] - E_ref['v_term'], c=mpl.cm.get_cmap('tab10')(4))
     ax[1].plot(x, [0] * len(x), c='k', linestyle='--')
     fig.legend(loc='center left', bbox_to_anchor=(1, 0.5))
     plt.savefig(f'{folder_name}/Energy_errors.png', dpi=300, bbox_inches='tight')
@@ -367,7 +375,9 @@ if __name__ == "__main__":
     # mol_full.diagonalize_hamiltonian()
     # tuple1 = mol_full.calculate_v_hxc(mol1.v_hxc)
     # mol1.self_consistent_loop(num_iter=30, tolerance=1E-6, oscillation_compensation=[5, 1])
-    time_l = generate_trend(6, 6, generate_chain1, 'chain1-root', i_param=1)
+    # time_l = generate_trend(6, 6, generate_chain1, 'chain1-root_r-0.5', i_param=1, r_param=0.5)
+    # time_l = generate_trend(6, 6, generate_chain1, 'chain1-root_r-0.2', i_param=1, r_param=0.2)
+    time_l = generate_trend(6, 6, generate_star1, 'star1', i_param=1)
     essentials.print_matrix(time_l)
     print('iterations: ', lpfet.ITERATION_NUM)
 
