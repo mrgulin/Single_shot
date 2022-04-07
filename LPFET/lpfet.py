@@ -21,14 +21,21 @@ ITERATION_NUM = 0
 
 
 def change_indices(array_inp: np.array, site_id: typing.Union[int, typing.List[int]],
-                   to_index: typing.Union[int, typing.List[int]] = 0):
+                   to_index: typing.Union[int, typing.List[int], None] = None):
     array = np.copy(array_inp)
-    if isinstance(site_id, (int, )):
-        site_id = [site_id]
-        to_index = [to_index]
+    if isinstance(site_id, (int, np.int64, np.int32, float, np.float64)):
+        site_id = [int(site_id)]
+        if to_index is not None:
+            to_index = [int(to_index)]
+        else:
+            to_index = [0]
     else:
         site_id = [int(i) for i in site_id]
-        to_index = [int(i) for i in to_index]
+
+        if to_index is not None:
+            to_index = [int(i) for i in to_index]
+        else:
+            to_index = list(range(len(site_id)))
         # It mustn't be a numpy array because we want + operator to be concatentation and not sum of arrays
     if site_id != to_index:
         # We have to move impurity on the index 0
@@ -49,7 +56,6 @@ def normalize_values(starting_vals):
             starting_vals2[i] = starting_vals2[i - 1]
         else:
             starting_vals2[i] = starting_vals2[i - 1] + 1
-    starting_vals2
     for i in range(len(starting_vals)):
         starting_vals[argsort[i]] = starting_vals2[i]
     return np.array(starting_vals)
@@ -58,13 +64,13 @@ def normalize_values(starting_vals):
 def cangen(t, cannon_list):
     order = normalize_values(cannon_list)
     order_old = np.zeros(len(order), int) - 100
-    iter = 0
-    while iter < 15 or sum(order - order_old) != 0:
+    iter1 = 0
+    while iter1 < 15 or sum(order - order_old) != 0:
 
         order_new = np.zeros(len(order), int)
         for i in range(len(cannon_list)):
             order_new[i] = order[i] * 100 + np.sum(t[i] * order)
-        iter += 1
+        iter1 += 1
         order_old = order.copy()
         order = normalize_values(order_new)
     ret_list = []
@@ -132,6 +138,7 @@ class Molecule:
         # block is same as second and 3rd is different
         self.equiv_atoms_in_block = []  # This 2d list is important so we know which atoms have the same impurity
         # potentials. This list is important because we have to optimize len(..) - 1 Hxc potentials
+        self.block_hh = False  # Variable that will be checked to see if algorithm should do single impurity or not.
 
     def add_parameters(self, u, t, v_ext,
                        v_term_repulsion_ratio: typing.Union[bool, float] = False):
@@ -206,6 +213,7 @@ class Molecule:
             ignore.append(i)
         print(equiv_atoms_in_block)
         self.equiv_atoms_in_block = equiv_atoms_in_block
+        self.block_hh = True
 
 
 
@@ -231,15 +239,20 @@ class Molecule:
         return i
 
     def find_solution_as_root(self, starting_approximation=None):
+        if self.block_hh:
+            eq_atom = self.equiv_atoms_in_block
+        else:
+            eq_atom = self.equiv_atom_groups
+
         if starting_approximation is None:
-            starting_approximation = np.zeros(len(self.equiv_atom_groups) - 1, float)
-            for group_key, group_tuple in enumerate(self.equiv_atom_groups):
+            starting_approximation = np.zeros(len(eq_atom) - 1, float)
+            for group_key, group_tuple in enumerate(eq_atom):
                 if group_key != 0:
                     group_element_site = group_tuple[0]
                     starting_approximation[group_key - 1] = (self.v_ext[0] - self.v_ext[group_element_site]) * 0.5
-        elif len(starting_approximation) != len(self.equiv_atom_groups) - 1:
+        elif len(starting_approximation) != len(eq_atom) - 1:
             raise Exception('Wrong length of the starting approximation')
-        model = scipy.optimize.root(cost_function_whole, starting_approximation,
+        model = scipy.optimize.root(cost_function_whole_block, starting_approximation,
                                     args=(self,), options={'fatol': 2e-3}, method='df-sane')
         if not model.success or np.sum(np.square(model.fun)) > 0.01:
             print("Didn't converge :c ")
@@ -520,24 +533,112 @@ class Molecule:
 
 def cost_function_whole(v_hxc_approximation: np.array, mol_obj: Molecule) -> np.array:
     mol_obj.v_hxc = np.zeros(mol_obj.Ns, float)
-    for group_id, group_site_tuple in enumerate(mol_obj.equiv_atom_groups):
+
+    if mol_obj.block_hh:
+        eq_atom = mol_obj.equiv_atoms_in_block
+    else:
+        eq_atom = mol_obj.equiv_atom_groups
+
+    for group_id, group_site_tuple in enumerate(eq_atom):
         if group_id != 0:
             for site_id_i in group_site_tuple:
                 mol_obj.v_hxc[site_id_i] = v_hxc_approximation[group_id - 1]
     mol_obj.v_hxc_progress.append(mol_obj.v_hxc)
     mol_obj.calculate_ks()
     mol_obj.density_progress.append(mol_obj.n_ks)
-    output_array = np.zeros(len(mol_obj.equiv_atom_groups) - 1, float)
+    output_array = np.zeros(len(eq_atom) - 1, float)
     mu_imp_first = np.nan
     first_iteration = True
     output_index = 0
-    for site_group, group_tuple in enumerate(mol_obj.equiv_atom_groups):
+
+    if mol_obj.block_hh:
+        for1_loop_list = mol_obj.equiv_block_groups
+    else:
+        for1_loop_list = mol_obj.equiv_atom_groups
+
+    for site_group, group_tuple in enumerate(for1_loop_list):
         site_id = group_tuple[0]
         y_a_correct_imp = change_indices(mol_obj.y_a, site_id)
         p, v = Quant_NBody.householder_transformation(y_a_correct_imp)
         h_tilde = p @ (change_indices(mol_obj.t, site_id) + np.diag(change_indices(mol_obj.v_s, site_id))) @ p
 
         h_tilde_dimer = h_tilde[:2, :2]
+        if mol_obj.v_term:
+            u4d = np.zeros(mol_obj.u4d.shape)
+            u4d[site_id, site_id, :, :] += mol_obj.u4d[site_id, site_id, :, :] / 2
+            u4d[:, :, site_id, site_id] += mol_obj.u4d[:, :, site_id, site_id] / 2
+            if site_id == 0:
+                u4d_correct_indices = u4d
+            else:
+                mask = np.arange(mol_obj.Ns)
+                mask[0] = site_id
+                mask[site_id] = 0
+                u4d_correct_indices = u4d[:, :, :, mask][:, :, mask, :][:, mask, :, :][mask, :, :, :]
+            u_0_dimer = np.einsum('ap, bq, cr, ds, abcd -> pqrs', p, p, p, p, u4d_correct_indices)[:2, :2, :2, :2]
+        else:
+            u_0_dimer = np.zeros((2, 2, 2, 2), dtype=np.float64)
+            u_0_dimer[0, 0, 0, 0] += mol_obj.u[site_id]
+
+        mol_obj.h_tilde_dimer[site_group] = h_tilde_dimer
+
+        if first_iteration:
+            if 0 not in mol_obj.equiv_atom_groups[site_group]:
+                raise Exception("Unexpected behaviour: First impurity site should have been the 0th site")
+            sol = sc_opt.root_scalar(cost_function_casci_root,
+                                     args=(mol_obj.embedded_mol, h_tilde_dimer, u_0_dimer, mol_obj.n_ks[site_id]),
+                                     bracket=[-5, 15], method='brentq', options={'xtol': 1e-6})
+            mu_imp, function_calls = sol.root, sol.function_calls
+            mu_imp_first = mu_imp
+        else:
+            mu_imp = mu_imp_first + mol_obj.v_hxc[site_id]
+            error_i = cost_function_casci_root(mu_imp, mol_obj.embedded_mol, h_tilde_dimer, u_0_dimer,
+                                               mol_obj.n_ks[site_id])
+            output_array[output_index] = error_i
+            output_index += 1
+        two_rdm = mol_obj.embedded_mol.calculate_2rdm_fh(index=0)
+        on_site_repulsion_i = two_rdm[0, 0, 0, 0] * u_0_dimer[0, 0, 0, 0]
+        v_term_repulsion_i = np.sum(two_rdm * u_0_dimer) - on_site_repulsion_i
+        for every_site_id in mol_obj.equiv_atom_groups[site_group]:
+            mol_obj.kinetic_contributions[every_site_id] = 2 * h_tilde[1, 0] * mol_obj.embedded_mol.one_rdm[1, 0]
+            mol_obj.onsite_repulsion[every_site_id] = on_site_repulsion_i
+            mol_obj.imp_potential[every_site_id] = mu_imp
+            mol_obj.v_term_repulsion[every_site_id] = v_term_repulsion_i
+        first_iteration = False
+    rms = np.sqrt(np.mean(np.square(output_array)))
+    # print(f"for input {''.join(['{num:{dec}}'.format(num=cell, dec='+10.4f') for cell in mol_obj.v_hxc])} error is"
+    #       f" {''.join(['{num:{dec}}'.format(num=cell, dec='+10.4f') for cell in output_array])} "
+    #       f" (RMS = {rms})")
+    print(
+        f"for input {''.join(['{num:{dec}}'.format(num=cell, dec='+13.3e') for cell in mol_obj.v_hxc[:2]])}"
+        f" we get error {''.join(['{num:{dec}}'.format(num=cell, dec='+13.3e') for cell in output_array[:2]])} "
+        f" (RMS = {rms})")
+    # if rms < 1e-4:
+    #     return np.zeros(len(mol_obj.equiv_atom_groups) - 1, float)
+    return output_array
+
+
+def cost_function_whole_block(v_hxc_approximation: np.array, mol_obj: Molecule) -> np.array:
+    mol_obj.v_hxc = np.zeros(mol_obj.Ns, float)
+    for group_id, group_site_tuple in enumerate(mol_obj.equiv_atoms_in_block):
+        if group_id != 0:
+            for site_id_i in group_site_tuple:
+                mol_obj.v_hxc[site_id_i] = v_hxc_approximation[group_id - 1]
+    mol_obj.v_hxc_progress.append(mol_obj.v_hxc)
+    mol_obj.calculate_ks()
+    mol_obj.density_progress.append(mol_obj.n_ks)
+    output_array = np.zeros(len(mol_obj.equiv_atoms_in_block) - 1, float)
+    mu_imp_first = np.nan
+    first_iteration = True
+    output_index = 0
+    for site_group, group_tuple in enumerate(mol_obj.equiv_block_groups):
+        block_id = group_tuple[0]
+        site_id = mol_obj.blocks[block_id]
+        y_a_correct_imp = change_indices(mol_obj.y_a, site_id)
+        site_i_len = len(site_id)
+        gamma_tilde, p, moore_penrose_inv = Quant_NBody.block_householder_transformation(y_a_correct_imp, site_i_len)
+        h_tilde = p @ (change_indices(mol_obj.t, site_id) + np.diag(change_indices(mol_obj.v_s, site_id))) @ p
+
+        h_tilde_dimer = h_tilde[:site_i_len, :site_i_len]
         if mol_obj.v_term:
             u4d = np.zeros(mol_obj.u4d.shape)
             u4d[site_id, site_id, :, :] += mol_obj.u4d[site_id, site_id, :, :] / 2
