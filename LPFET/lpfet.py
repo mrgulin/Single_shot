@@ -20,15 +20,23 @@ COMPENSATION_5_FACTOR2 = 0.5
 ITERATION_NUM = 0
 
 
-def change_indices(array_inp: np.array, site_id: int, to_index: int = 0):
+def change_indices(array_inp: np.array, site_id: typing.Union[int, typing.List[int]],
+                   to_index: typing.Union[int, typing.List[int]] = 0):
     array = np.copy(array_inp)
+    if isinstance(site_id, (int, )):
+        site_id = [site_id]
+        to_index = [to_index]
+    else:
+        site_id = [int(i) for i in site_id]
+        to_index = [int(i) for i in to_index]
+        # It mustn't be a numpy array because we want + operator to be concatentation and not sum of arrays
     if site_id != to_index:
         # We have to move impurity on the index 0
         if array_inp.ndim == 2:
-            array[:, [to_index, site_id]] = array[:, [site_id, to_index]]
-            array[[to_index, site_id], :] = array[[site_id, to_index], :]
+            array[:, to_index + site_id] = array[:, site_id + to_index]
+            array[to_index + site_id, :] = array[site_id + to_index, :]
         elif array_inp.ndim == 1:
-            array[[to_index, site_id]] = array[[site_id, to_index]]
+            array[to_index + site_id] = array[site_id + to_index]
     return array
 
 
