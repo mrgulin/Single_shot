@@ -118,6 +118,7 @@ class Molecule:
         # Quant_NBody objects
         # self.whole_mol = class_Quant_NBody.QuantNBody(self.Ns, self.Ne)
         self.embedded_mol = class_Quant_NBody.QuantNBody(2, 2)
+        self.embedded_mol_dict = dict()
         self.embedded_mol.build_operator_a_dagger_a()
 
         self.density_progress = []  # This object is used for gathering changes in the density over iterations
@@ -209,6 +210,11 @@ class Molecule:
             ignore.append(i)
         print(equiv_atoms_in_block)
         self.equiv_atoms_in_block = equiv_atoms_in_block
+
+        for block_i in blocks:
+            block_size = len(block_i)
+            self.embedded_mol_dict[block_size] = class_Quant_NBody.QuantNBody(block_size * 2, block_size * 2)
+            self.embedded_mol_dict[block_size].build_operator_a_dagger_a()
         self.block_hh = True
 
     def self_consistent_loop(self, num_iter=10, tolerance=0.0001,
@@ -246,8 +252,12 @@ class Molecule:
                     starting_approximation[group_key - 1] = (self.v_ext[0] - self.v_ext[group_element_site]) * 0.5
         elif len(starting_approximation) != len(eq_atom) - 1:
             raise Exception('Wrong length of the starting approximation')
-        model = scipy.optimize.root(cost_function_whole, starting_approximation,
-                                    args=(self,), options={'fatol': 2e-3}, method='df-sane')
+        if self.block_hh:
+            model = scipy.optimize.root(cost_function_whole_block, starting_approximation,
+                                        args=(self,), options={'fatol': 2e-3}, method='df-sane')
+        else:
+            model = scipy.optimize.root(cost_function_whole, starting_approximation,
+                                        args=(self,), options={'fatol': 2e-3}, method='df-sane')
         if not model.success or np.sum(np.square(model.fun)) > 0.01:
             print("Didn't converge :c ")
             return False
@@ -533,15 +543,18 @@ class Molecule:
 
         self.oscillation_correction_dict = dict()
 
-    def update_variables_embedded(self, v_tilde, h_tilde, site_group, mu_imp):
-        two_rdm = self.embedded_mol.calculate_2rdm_fh_with_v(v_tilde)
+    def update_variables_embedded(self, v_tilde, h_tilde, site_group, mu_imp, embedded_mol):
+        two_rdm = embedded_mol.calculate_2rdm_fh_with_v(v_tilde)
         on_site_repulsion_i = two_rdm[0, 0, 0, 0] * self.u[self.equiv_atom_groups[site_group][0]]
         v_term_repulsion_i = np.sum(two_rdm * v_tilde)
         for every_site_id in self.equiv_atom_groups[site_group]:
-            self.kinetic_contributions[every_site_id] = 2 * h_tilde[1, 0] * self.embedded_mol.one_rdm[1, 0]
+            self.kinetic_contributions[every_site_id] = 2 * h_tilde[1, 0] * embedded_mol.one_rdm[1, 0]
             self.onsite_repulsion[every_site_id] = on_site_repulsion_i
             self.imp_potential[every_site_id] = mu_imp
             self.v_term_repulsion[every_site_id] = v_term_repulsion_i
+        something like:
+        self.imp_potential[self.blocks[site_group]] = mu_imp
+        But now we see that there is a problem with the sites and blocks :c
 
     def transform_v_term(self, p, site_id):
         if isinstance(site_id, (int, np.int32, np.int64)):
@@ -613,7 +626,7 @@ def cost_function_whole(v_hxc_approximation: np.array, mol_obj: Molecule) -> np.
                                                mol_obj.n_ks[site_id], v_tilde)
             output_array[output_index] = error_i
             output_index += 1
-        mol_obj.update_variables_embedded(v_tilde, h_tilde, site_group, mu_imp)
+        mol_obj.update_variables_embedded(v_tilde, h_tilde, site_group, mu_imp, mol_obj.embedded_mol)
         first_iteration = False
     rms = np.sqrt(np.mean(np.square(output_array)))
     print(f"for input {''.join(['{num:{dec}}'.format(num=cell, dec='+10.2e') for cell in mol_obj.v_hxc])} error is"
@@ -651,9 +664,9 @@ def cost_function_whole_block(v_hxc_approximation: np.array, mol_obj: Molecule) 
             if 0 not in site_id:
                 raise Exception("Unexpected behaviour: First impurity site should have been the 0th site")
             model = scipy.optimize.root(cost_function_casci_root, mol_obj.v_hxc[site_id],
-                                        args=(
-                                            mol_obj.embedded_mol, h_tilde_dimer, u_0_dimer, mol_obj.n_ks[site_id],
-                                            v_tilde), options={'fatol': 1e-2}, method='df-sane')
+                                        args=(mol_obj.embedded_mol_dict[block_size], h_tilde_dimer, u_0_dimer,
+                                              mol_obj.n_ks[site_id], v_tilde),
+                                        options={'fatol': 1e-2}, method='df-sane')
             if not model.success or np.sum(np.square(model.fun)) > 0.01:
                 print("Didn't converge :c ")
                 raise Exception('Inversion of a cluster did not succeed')
@@ -662,10 +675,10 @@ def cost_function_whole_block(v_hxc_approximation: np.array, mol_obj: Molecule) 
             mu_imp_first = mu_imp[zero_index_in_block]
 
         mu_imp = mu_imp_first + mol_obj.v_hxc[site_id]
-        error_i = cost_function_casci_root(mu_imp, mol_obj.embedded_mol, h_tilde_dimer, u_0_dimer,
+        error_i = cost_function_casci_root(mu_imp, mol_obj.embedded_mol_dict[block_size], h_tilde_dimer, u_0_dimer,
                                            mol_obj.n_ks[site_id], v_tilde)
         output_array_non_reduced[site_id] = error_i
-        mol_obj.update_variables_embedded(v_tilde, h_tilde, site_group, mu_imp)
+        mol_obj.update_variables_embedded(v_tilde, h_tilde, site_group, mu_imp, mol_obj.embedded_mol_dict[block_size])
         first_iteration = False
     if np.any(np.isnan(output_array_non_reduced)):
         raise Exception("Didn't cover all groups")

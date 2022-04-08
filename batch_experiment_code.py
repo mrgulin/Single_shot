@@ -1,4 +1,6 @@
-from LPFET.calculate_batch import  generate_trend
+from LPFET.calculate_batch import generate_trend
+import LPFET.lpfet as lpfet
+import LPFET.essentials as essentials
 # generate_trend(6, 6, generate_chain2, 'chain2', u_param=5)
 # generate_trend(6, 6, generate_chain3, 'chain3', u_param=5, delta_x=0.4, max_value=4)
 # generate_trend(6, 6, essentials.generate_star1, 'star1', u_param=5, delta_x=0.4, max_value=4)
@@ -20,9 +22,9 @@ from LPFET.calculate_batch import  generate_trend
 # tuple1 = mol_full.calculate_v_hxc(mol1.v_hxc)
 # mol1.self_consistent_loop(num_iter=30, tolerance=1E-6, oscillation_compensation=[5, 1])
 # time_l = generate_trend(6, 6, essentials.generate_chain1, 'chain1-root_r-0.5', i_param=1, r_param=0.5)
-# time_l = generate_trend(6, 6, essentials.generate_chain1, 'chain1-root_r-0.2', i_param=1, r_param=0.2)
+time_l = generate_trend(6, 6, essentials.generate_chain1, 'chain1-root_r-0.2_new', i_param=1, r_param=0.2)
 # time_l = generate_trend(6, 2, essentials.generate_star1, 'star1', i_param=1)
-time_l = generate_trend(6, 6, essentials.generate_star1, 'star1', i_param=1)
+# time_l = generate_trend(6, 6, essentials.generate_star1, 'star1', i_param=1)
 # time_l = generate_trend(6, 2, essentials.generate_complete1, 'complete1', i_param=3)
 # time_l = generate_trend(6, 10, essentials.generate_complete1, 'complete1', i_param=3)
 essentials.print_matrix(time_l)
