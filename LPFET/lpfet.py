@@ -1,7 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy.optimize
-import scipy.optimize as sc_opt
 from datetime import datetime
 # For plotting of the molecule (if you don't need this you can delete Molecule.plot_hubbard_molecule
 # and this import statements
@@ -36,7 +35,7 @@ def change_indices(array_inp: np.array, site_id: typing.Union[int, typing.List[i
             to_index = [int(i) for i in to_index]
         else:
             to_index = list(range(len(site_id)))
-        # It mustn't be a numpy array because we want + operator to be concatentation and not sum of arrays
+        # It mustn't be a numpy array because we want + operator to be concatenation and not sum of arrays
     if site_id != to_index:
         # We have to move impurity on the index 0
         if array_inp.ndim == 2:
@@ -50,14 +49,14 @@ def change_indices(array_inp: np.array, site_id: typing.Union[int, typing.List[i
 def normalize_values(starting_vals):
     # starting_vals = [0, 10000, -312, 10000, 0, 10000]
     starting_vals2 = np.zeros(len(starting_vals), int) + 1
-    argsort = np.argsort(starting_vals)
-    for i in range(1, len(argsort)):
-        if not starting_vals[argsort[i]] > starting_vals[argsort[i - 1]] + 1e-4:
+    arg_sort = np.argsort(starting_vals)
+    for i in range(1, len(arg_sort)):
+        if not starting_vals[arg_sort[i]] > starting_vals[arg_sort[i - 1]] + 1e-4:
             starting_vals2[i] = starting_vals2[i - 1]
         else:
             starting_vals2[i] = starting_vals2[i - 1] + 1
     for i in range(len(starting_vals)):
-        starting_vals[argsort[i]] = starting_vals2[i]
+        starting_vals[arg_sort[i]] = starting_vals2[i]
     return np.array(starting_vals)
 
 
@@ -132,7 +131,7 @@ class Molecule:
         self.compensation_ratio_dict = dict()
 
         # Block Householder
-        self.blocks = []  # This 2d list tells us which sites are merged into which clusters [[c0s0, c0s1,..], [c1s0...]]
+        self.blocks = []  # This 2d list tells us which sites are merged into which clusters [[c0s0, c0s1,..],[c1s0...]]
         self.equiv_block_groups = []  # This 2d list tells us which blocks are equivalent. [0, 1], [2]] means that first
         # block is same as second and 3rd is different
         self.equiv_atoms_in_block = []  # This 2d list is important so we know which atoms have the same impurity
@@ -593,21 +592,19 @@ def cost_function_whole(v_hxc_approximation: np.array, mol_obj: Molecule) -> np.
         y_a_correct_imp = change_indices(mol_obj.y_a, site_id)
         p, v = Quant_NBody.householder_transformation(y_a_correct_imp)
         h_tilde = p @ (change_indices(mol_obj.t, site_id) + np.diag(change_indices(mol_obj.v_s, site_id))) @ p
-
         h_tilde_dimer = h_tilde[:2, :2]
         v_tilde = mol_obj.transform_v_term(p, site_id)
         u_0_dimer = np.zeros((2, 2, 2, 2), dtype=np.float64)
         u_0_dimer[0, 0, 0, 0] += mol_obj.u[site_id]
-
         mol_obj.h_tilde_dimer[site_group] = h_tilde_dimer
-
         if first_iteration:
             if 0 not in mol_obj.equiv_atom_groups[site_group]:
                 raise Exception("Unexpected behaviour: First impurity site should have been the 0th site")
-            sol = sc_opt.root_scalar(cost_function_casci_root,
-                                     args=(mol_obj.embedded_mol, h_tilde_dimer, u_0_dimer, mol_obj.n_ks[site_id],
-                                           v_tilde),
-                                     bracket=[-5, 15], method='brentq', options={'xtol': 1e-6})
+            sol = scipy.optimize.root_scalar(cost_function_casci_root,
+                                             args=(
+                                                 mol_obj.embedded_mol, h_tilde_dimer, u_0_dimer, mol_obj.n_ks[site_id],
+                                                 v_tilde),
+                                             bracket=[-5, 15], method='brentq', options={'xtol': 1e-6})
             mu_imp, function_calls = sol.root, sol.function_calls
             mu_imp_first = mu_imp
         else:
@@ -617,116 +614,90 @@ def cost_function_whole(v_hxc_approximation: np.array, mol_obj: Molecule) -> np.
             output_array[output_index] = error_i
             output_index += 1
         mol_obj.update_variables_embedded(v_tilde, h_tilde, site_group, mu_imp)
-        # two_rdm = mol_obj.embedded_mol.calculate_2rdm_fh_with_v(v_tilde)
-        # on_site_repulsion_i = two_rdm[0, 0, 0, 0] * u_0_dimer[0, 0, 0, 0]
-        # v_term_repulsion_i = np.sum(two_rdm * v_tilde)
-        # for every_site_id in mol_obj.equiv_atom_groups[site_group]:
-        #     mol_obj.kinetic_contributions[every_site_id] = 2 * h_tilde[1, 0] * mol_obj.embedded_mol.one_rdm[1, 0]
-        #     mol_obj.onsite_repulsion[every_site_id] = on_site_repulsion_i
-        #     mol_obj.imp_potential[every_site_id] = mu_imp
-        #     mol_obj.v_term_repulsion[every_site_id] = v_term_repulsion_i
         first_iteration = False
     rms = np.sqrt(np.mean(np.square(output_array)))
-    # print(f"for input {''.join(['{num:{dec}}'.format(num=cell, dec='+10.4f') for cell in mol_obj.v_hxc])} error is"
-    #       f" {''.join(['{num:{dec}}'.format(num=cell, dec='+10.4f') for cell in output_array])} "
-    #       f" (RMS = {rms})")
-    print(
-        f"for input {''.join(['{num:{dec}}'.format(num=cell, dec='+13.3e') for cell in mol_obj.v_hxc[:2]])}"
-        f" we get error {''.join(['{num:{dec}}'.format(num=cell, dec='+13.3e') for cell in output_array[:2]])} "
-        f" (RMS = {rms})")
-    # if rms < 1e-4:
-    #     return np.zeros(len(mol_obj.equiv_atom_groups) - 1, float)
+    print(f"for input {''.join(['{num:{dec}}'.format(num=cell, dec='+10.2e') for cell in mol_obj.v_hxc])} error is"
+          f" {''.join(['{num:{dec}}'.format(num=cell, dec='+10.2e') for cell in output_array])} "
+          f" (RMS = {rms})")
     return output_array
 
 
 def cost_function_whole_block(v_hxc_approximation: np.array, mol_obj: Molecule) -> np.array:
     mol_obj.v_hxc = np.zeros(mol_obj.Ns, float)
-    for group_id, group_site_tuple in enumerate(mol_obj.equiv_atoms_in_block):
+    for group_id, group_site_tuple in enumerate(mol_obj.equiv_atom_groups):
         if group_id != 0:
             for site_id_i in group_site_tuple:
                 mol_obj.v_hxc[site_id_i] = v_hxc_approximation[group_id - 1]
     mol_obj.v_hxc_progress.append(mol_obj.v_hxc)
     mol_obj.calculate_ks()
     mol_obj.density_progress.append(mol_obj.n_ks)
-    output_array = np.zeros(len(mol_obj.equiv_atoms_in_block) - 1, float)
+    output_array_non_reduced = np.zeros(mol_obj.Ns, float) * np.nan
+    output_array = np.zeros(len(mol_obj.equiv_atom_groups) - 1, float) * np.nan
     mu_imp_first = np.nan
     first_iteration = True
-    output_index = 0
+
     for site_group, group_tuple in enumerate(mol_obj.equiv_block_groups):
         block_id = group_tuple[0]
         site_id = mol_obj.blocks[block_id]
+        block_size = len(site_id)
         y_a_correct_imp = change_indices(mol_obj.y_a, site_id)
-        site_i_len = len(site_id)
-        gamma_tilde, p, moore_penrose_inv = Quant_NBody.block_householder_transformation(y_a_correct_imp, site_i_len)
+        gamma_tilde, p, moore_penrose_inv = Quant_NBody.block_householder_transformation(y_a_correct_imp, block_size)
         h_tilde = p @ (change_indices(mol_obj.t, site_id) + np.diag(change_indices(mol_obj.v_s, site_id))) @ p
-
-        h_tilde_dimer = h_tilde[:site_i_len, :site_i_len]
-        if mol_obj.v_term is not None:
-            v_term = np.zeros((mol_obj.Ns, mol_obj.Ns))
-            v_term[site_id, :] += mol_obj.v_term[site_id, :] / 2
-            v_term[:, site_id] += mol_obj.v_term[:, site_id] / 2
-            if site_id == 0:
-                v_term_correct_indices = v_term
-            else:
-                mask = np.arange(mol_obj.Ns)
-                mask[0] = site_id
-                mask[site_id] = 0
-                v_term_correct_indices = v_term[:, mask][mask, :]
-            v_tilde = np.einsum('ip, iq, jr, js, ij -> pqrs', p, p, p, p, v_term_correct_indices)[:2, :2, :2, :2]
-        else:
-            v_tilde = None
-        u_0_dimer = np.zeros((2, 2, 2, 2), dtype=np.float64)
-        u_0_dimer[0, 0, 0, 0] += mol_obj.u[site_id]
-
-        mol_obj.h_tilde_dimer[site_group] = h_tilde_dimer
-
+        h_tilde_dimer = h_tilde[:block_size * 2, :block_size * 2]
+        v_tilde = mol_obj.transform_v_term(p, site_id)
+        u_0_dimer = np.zeros((block_size * 2, block_size * 2, block_size * 2, block_size * 2), dtype=np.float64)
+        u_0_dimer[site_id, site_id, site_id, site_id] += mol_obj.u[site_id]
         if first_iteration:
-            if 0 not in mol_obj.equiv_atom_groups[site_group]:
+            if 0 not in site_id:
                 raise Exception("Unexpected behaviour: First impurity site should have been the 0th site")
-            sol = sc_opt.root_scalar(cost_function_casci_root,
-                                     args=(mol_obj.embedded_mol, h_tilde_dimer, u_0_dimer, mol_obj.n_ks[site_id],
-                                           v_tilde),
-                                     bracket=[-5, 15], method='brentq', options={'xtol': 1e-6})
-            mu_imp, function_calls = sol.root, sol.function_calls
-            mu_imp_first = mu_imp
-        else:
-            mu_imp = mu_imp_first + mol_obj.v_hxc[site_id]
-            error_i = cost_function_casci_root(mu_imp, mol_obj.embedded_mol, h_tilde_dimer, u_0_dimer,
-                                               mol_obj.n_ks[site_id], v_tilde)
-            output_array[output_index] = error_i
-            output_index += 1
-        two_rdm = mol_obj.embedded_mol.calculate_2rdm_fh(index=0)
-        on_site_repulsion_i = two_rdm[0, 0, 0, 0] * u_0_dimer[0, 0, 0, 0]
-        v_term_repulsion_i = np.sum(two_rdm * v_tilde)
-        for every_site_id in mol_obj.equiv_atom_groups[site_group]:
-            mol_obj.kinetic_contributions[every_site_id] = 2 * h_tilde[1, 0] * mol_obj.embedded_mol.one_rdm[1, 0]
-            mol_obj.onsite_repulsion[every_site_id] = on_site_repulsion_i
-            mol_obj.imp_potential[every_site_id] = mu_imp
-            mol_obj.v_term_repulsion[every_site_id] = v_term_repulsion_i
+            model = scipy.optimize.root(cost_function_casci_root, mol_obj.v_hxc[site_id],
+                                        args=(
+                                            mol_obj.embedded_mol, h_tilde_dimer, u_0_dimer, mol_obj.n_ks[site_id],
+                                            v_tilde), options={'fatol': 1e-2}, method='df-sane')
+            if not model.success or np.sum(np.square(model.fun)) > 0.01:
+                print("Didn't converge :c ")
+                raise Exception('Inversion of a cluster did not succeed')
+            zero_index_in_block = list(site_id).index(0)
+            mu_imp = model.x
+            mu_imp_first = mu_imp[zero_index_in_block]
+
+        mu_imp = mu_imp_first + mol_obj.v_hxc[site_id]
+        error_i = cost_function_casci_root(mu_imp, mol_obj.embedded_mol, h_tilde_dimer, u_0_dimer,
+                                           mol_obj.n_ks[site_id], v_tilde)
+        output_array_non_reduced[site_id] = error_i
+        mol_obj.update_variables_embedded(v_tilde, h_tilde, site_group, mu_imp)
         first_iteration = False
+    if np.any(np.isnan(output_array_non_reduced)):
+        raise Exception("Didn't cover all groups")
+    for group_id, group_site_tuple in enumerate(mol_obj.equiv_atom_groups):
+        if group_id != 0:
+            # now in output_array_non_reduced we have many nan_values because we don't want to calculate for every
+            # site but just for one in equivalent sites. Sometimes it still happens that we have more than
+            # 1 calculation. In this case we want to have same value
+            values_from_same_group = output_array_non_reduced[group_site_tuple]
+            values_from_same_group = values_from_same_group[not np.isnan(values_from_same_group)]
+            if max(values_from_same_group) - min(values_from_same_group) < 2e-2:
+                raise Exception("Equivalent sites got different densities!")
+            output_array[group_id - 1] = np.mean(values_from_same_group)
     rms = np.sqrt(np.mean(np.square(output_array)))
-    # print(f"for input {''.join(['{num:{dec}}'.format(num=cell, dec='+10.4f') for cell in mol_obj.v_hxc])} error is"
-    #       f" {''.join(['{num:{dec}}'.format(num=cell, dec='+10.4f') for cell in output_array])} "
-    #       f" (RMS = {rms})")
-    print(
-        f"for input {''.join(['{num:{dec}}'.format(num=cell, dec='+13.3e') for cell in mol_obj.v_hxc[:2]])}"
-        f" we get error {''.join(['{num:{dec}}'.format(num=cell, dec='+13.3e') for cell in output_array[:2]])} "
-        f" (RMS = {rms})")
-    # if rms < 1e-4:
-    #     return np.zeros(len(mol_obj.equiv_atom_groups) - 1, float)
+    print(f"Block: for input {''.join(['{num:{dec}}'.format(num=cell, dec='+10.2e') for cell in mol_obj.v_hxc])}"
+          f" error is {''.join(['{num:{dec}}'.format(num=cell, dec='+10.2e') for cell in output_array])} "
+          f" (RMS = {rms})")
     return output_array
 
 
 def cost_function_casci_root(mu_imp, embedded_mol, h_tilde_dimer, u_0_dimer, desired_density, v_tilde):
     # mu_imp = mu_imp[0]
     global ITERATION_NUM
+    cluster_size = h_tilde_dimer.shape[0]
+    half_diagonal = np.arange(cluster_size / 2, dtype=int)
     ITERATION_NUM += 1
-    mu_imp_array = np.array([[mu_imp, 0], [0, 0]])
+    mu_imp_array = np.zeros((cluster_size, cluster_size))
+    mu_imp_array[half_diagonal, half_diagonal] = mu_imp
     embedded_mol.build_hamiltonian_fermi_hubbard(h_tilde_dimer - mu_imp_array, u_0_dimer, v_term=v_tilde)
     embedded_mol.diagonalize_hamiltonian()
-
     density_dimer = embedded_mol.calculate_1rdm(index=0)
-    return density_dimer[0, 0] - desired_density
+    return density_dimer[half_diagonal, half_diagonal] - desired_density
 
 
 def see_landscape_ruggedness(embedded_mol, h_tilde_dimer, u_0_dimer, goal_density=False, optimized_potential=False,
