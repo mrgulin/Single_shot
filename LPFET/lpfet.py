@@ -90,12 +90,11 @@ class Molecule:
 
         # Parameters for the system
         self.u = np.array((), dtype=np.float64)  # for the start only 1D array and not 4d tensor
-        self.u4d = np.array((), dtype=np.float64)
         self.t = np.array((), dtype=np.float64)  # 2D one electron Hamiltonian with all terms for i != j
         self.v_ext = np.array((), dtype=np.float64)  # 1D one electron Hamiltonian with all terms for i == j
         self.equiv_atom_groups = []
         self.equiv_atom_groups_reverse = []
-        self.v_term = False
+        self.v_term = None
 
         # density matrix
         self.y_a = np.array((), dtype=np.float64)  # y --> gamma, a --> alpha so this indicates it is only per one spin
@@ -133,7 +132,7 @@ class Molecule:
         self.compensation_ratio_dict = dict()
 
         # Block Householder
-        self.blocks = [] # This 2d list tells us which sites are merged into which clusters [[c0s0, c0s1,..], [c1s0...]]
+        self.blocks = []  # This 2d list tells us which sites are merged into which clusters [[c0s0, c0s1,..], [c1s0...]]
         self.equiv_block_groups = []  # This 2d list tells us which blocks are equivalent. [0, 1], [2]] means that first
         # block is same as second and 3rd is different
         self.equiv_atoms_in_block = []  # This 2d list is important so we know which atoms have the same impurity
@@ -147,16 +146,14 @@ class Molecule:
         self.u = u
         self.t = t
         self.v_ext = v_ext
-        self.u4d = np.zeros((self.Ns, self.Ns, self.Ns, self.Ns))
         for i in range(self.Ns):
-            self.u4d[i, i, i, i] = self.u[i]
             if v_term_repulsion_ratio:
-                self.v_term = True
+                self.v_term = np.zeros((self.Ns, self.Ns))
                 for a in range(len(self.t)):
                     for b in range(len(self.t)):
-                        if self.t[a, b] != 0:
-                            self.u4d[a, a, b, b] = v_term_repulsion_ratio * 0.5 * (u[a] + u[b])
-                            self.u4d[b, b, a, a] = v_term_repulsion_ratio * 0.5 * (u[a] + u[b])
+                        if self.t[a, b] != 0 and a > b:
+                            self.v_term[a, b] = v_term_repulsion_ratio * 0.5 * (u[a] + u[b])
+                            # self.v_term[b, a] = v_term_repulsion_ratio * 0.5 * (u[a] + u[b])
         if not np.allclose(self.t, self.t.T):
             raise Exception("t matrix should have been symmetric")
         equiv_atom_group_list = cangen(t, np.array(u) * 100 + np.array(v_ext))
@@ -215,8 +212,6 @@ class Molecule:
         self.equiv_atoms_in_block = equiv_atoms_in_block
         self.block_hh = True
 
-
-
     def self_consistent_loop(self, num_iter=10, tolerance=0.0001,
                              oscillation_compensation: typing.Union[int, typing.List[int]] = 0, v_hxc_0=None):
         old_density = np.inf
@@ -252,7 +247,7 @@ class Molecule:
                     starting_approximation[group_key - 1] = (self.v_ext[0] - self.v_ext[group_element_site]) * 0.5
         elif len(starting_approximation) != len(eq_atom) - 1:
             raise Exception('Wrong length of the starting approximation')
-        model = scipy.optimize.root(cost_function_whole_block, starting_approximation,
+        model = scipy.optimize.root(cost_function_whole, starting_approximation,
                                     args=(self,), options={'fatol': 2e-3}, method='df-sane')
         if not model.success or np.sum(np.square(model.fun)) > 0.01:
             print("Didn't converge :c ")
@@ -314,7 +309,7 @@ class Molecule:
 
             two_rdm = self.embedded_mol.calculate_2rdm_fh(index=0)
             on_site_repulsion_i = two_rdm[0, 0, 0, 0] * u_0_dimer[0, 0, 0, 0]
-            v_term_repulsion_i = np.sum(two_rdm * u_0_dimer) - on_site_repulsion_i
+            v_term_repulsion_i = np.sum(two_rdm * v_tilde)
             for every_site_id in self.equiv_atom_groups[site_group]:
                 self.imp_potential[every_site_id] = mu_imp
                 self.v_term_repulsion[every_site_id] = v_term_repulsion_i
@@ -436,7 +431,14 @@ class Molecule:
         else:
             mol_full = class_Quant_NBody.QuantNBody(self.Ns, self.Ne)
             mol_full.build_operator_a_dagger_a()
-        mol_full.build_hamiltonian_fermi_hubbard(self.t + np.diag(self.v_ext), self.u4d)
+        u4d = np.zeros((self.Ns, self.Ns, self.Ns, self.Ns))
+        for i in range(self.Ns):
+            u4d[i, i, i, i] = self.u[i]
+        v_tilde = None
+        if self.v_term is not None:
+            p = np.eye(self.Ns)
+            v_tilde = np.einsum('ip, iq, jr, js, ij -> pqrs', p, p, p, p, self.v_term)
+        mol_full.build_hamiltonian_fermi_hubbard(self.t + np.diag(self.v_ext), u4d, v_term=v_tilde)
         mol_full.diagonalize_hamiltonian()
         y_ab = mol_full.calculate_1rdm()
         densities = y_ab.diagonal()
@@ -448,11 +450,13 @@ class Molecule:
         if calculate_per_site:
             per_site_array = np.zeros(self.Ns, dtype=[('tot', float), ('kin', float), ('v_ext', float), ('u', float),
                                                       ('v_term', float)])
-            on_site_repulsion_array = self.u4d * mol_full.calculate_2rdm_fh(index=0)
+
+            two_rdm = mol_full.calculate_2rdm_fh_with_v(v_tilde)
+            on_site_repulsion_array = two_rdm * v_tilde
             t_multiplied_matrix = y_ab * self.t * 2
             for site in range(self.Ns):
                 per_site_array[site]['v_ext'] = 2 * self.v_ext[site] * densities[site]
-                per_site_array[site]['u'] = on_site_repulsion_array[site, site, site, site]
+                per_site_array[site]['u'] = two_rdm[site, site, site, site] * self.u[site]
                 per_site_array[site]['kin'] = np.sum(t_multiplied_matrix[site])
                 per_site_array[site]['v_term'] = 0.5 * (np.sum(on_site_repulsion_array[site, site, :, :]) +
                                                         np.sum(on_site_repulsion_array[:, :, site, site]))
@@ -530,6 +534,39 @@ class Molecule:
 
         self.oscillation_correction_dict = dict()
 
+    def update_variables_embedded(self, v_tilde, h_tilde, site_group, mu_imp):
+        two_rdm = self.embedded_mol.calculate_2rdm_fh_with_v(v_tilde)
+        on_site_repulsion_i = two_rdm[0, 0, 0, 0] * self.u[self.equiv_atom_groups[site_group][0]]
+        v_term_repulsion_i = np.sum(two_rdm * v_tilde)
+        for every_site_id in self.equiv_atom_groups[site_group]:
+            self.kinetic_contributions[every_site_id] = 2 * h_tilde[1, 0] * self.embedded_mol.one_rdm[1, 0]
+            self.onsite_repulsion[every_site_id] = on_site_repulsion_i
+            self.imp_potential[every_site_id] = mu_imp
+            self.v_term_repulsion[every_site_id] = v_term_repulsion_i
+
+    def transform_v_term(self, p, site_id):
+        if isinstance(site_id, (int, np.int32, np.int64)):
+            site_id = [site_id]
+        impurity_size = len(site_id)
+        if self.v_term is not None:
+            v_term = np.zeros((self.Ns, self.Ns))
+            v_term[site_id, :] += self.v_term[site_id, :]
+            v_term[:, site_id] += self.v_term[:, site_id]
+            if site_id == list(range(impurity_size)):
+                v_term_correct_indices = v_term
+            else:
+                mask = np.arange(self.Ns)
+                mask[range(impurity_size)] = site_id
+                mask[site_id] = range(impurity_size)
+                v_term_correct_indices = v_term[:, mask][mask, :]
+            v_tilde = np.einsum('ip, iq, jr, js, ij -> pqrs', p, p, p, p, v_term_correct_indices)[:2 * impurity_size,
+                                                                                                  :2 * impurity_size,
+                                                                                                  :2 * impurity_size,
+                                                                                                  :2 * impurity_size]
+        else:
+            v_tilde = None
+        return v_tilde
+
 
 def cost_function_whole(v_hxc_approximation: np.array, mol_obj: Molecule) -> np.array:
     mol_obj.v_hxc = np.zeros(mol_obj.Ns, float)
@@ -551,33 +588,16 @@ def cost_function_whole(v_hxc_approximation: np.array, mol_obj: Molecule) -> np.
     first_iteration = True
     output_index = 0
 
-    if mol_obj.block_hh:
-        for1_loop_list = mol_obj.equiv_block_groups
-    else:
-        for1_loop_list = mol_obj.equiv_atom_groups
-
-    for site_group, group_tuple in enumerate(for1_loop_list):
+    for site_group, group_tuple in enumerate(mol_obj.equiv_atom_groups):
         site_id = group_tuple[0]
         y_a_correct_imp = change_indices(mol_obj.y_a, site_id)
         p, v = Quant_NBody.householder_transformation(y_a_correct_imp)
         h_tilde = p @ (change_indices(mol_obj.t, site_id) + np.diag(change_indices(mol_obj.v_s, site_id))) @ p
 
         h_tilde_dimer = h_tilde[:2, :2]
-        if mol_obj.v_term:
-            u4d = np.zeros(mol_obj.u4d.shape)
-            u4d[site_id, site_id, :, :] += mol_obj.u4d[site_id, site_id, :, :] / 2
-            u4d[:, :, site_id, site_id] += mol_obj.u4d[:, :, site_id, site_id] / 2
-            if site_id == 0:
-                u4d_correct_indices = u4d
-            else:
-                mask = np.arange(mol_obj.Ns)
-                mask[0] = site_id
-                mask[site_id] = 0
-                u4d_correct_indices = u4d[:, :, :, mask][:, :, mask, :][:, mask, :, :][mask, :, :, :]
-            u_0_dimer = np.einsum('ap, bq, cr, ds, abcd -> pqrs', p, p, p, p, u4d_correct_indices)[:2, :2, :2, :2]
-        else:
-            u_0_dimer = np.zeros((2, 2, 2, 2), dtype=np.float64)
-            u_0_dimer[0, 0, 0, 0] += mol_obj.u[site_id]
+        v_tilde = mol_obj.transform_v_term(p, site_id)
+        u_0_dimer = np.zeros((2, 2, 2, 2), dtype=np.float64)
+        u_0_dimer[0, 0, 0, 0] += mol_obj.u[site_id]
 
         mol_obj.h_tilde_dimer[site_group] = h_tilde_dimer
 
@@ -585,24 +605,26 @@ def cost_function_whole(v_hxc_approximation: np.array, mol_obj: Molecule) -> np.
             if 0 not in mol_obj.equiv_atom_groups[site_group]:
                 raise Exception("Unexpected behaviour: First impurity site should have been the 0th site")
             sol = sc_opt.root_scalar(cost_function_casci_root,
-                                     args=(mol_obj.embedded_mol, h_tilde_dimer, u_0_dimer, mol_obj.n_ks[site_id]),
+                                     args=(mol_obj.embedded_mol, h_tilde_dimer, u_0_dimer, mol_obj.n_ks[site_id],
+                                           v_tilde),
                                      bracket=[-5, 15], method='brentq', options={'xtol': 1e-6})
             mu_imp, function_calls = sol.root, sol.function_calls
             mu_imp_first = mu_imp
         else:
             mu_imp = mu_imp_first + mol_obj.v_hxc[site_id]
             error_i = cost_function_casci_root(mu_imp, mol_obj.embedded_mol, h_tilde_dimer, u_0_dimer,
-                                               mol_obj.n_ks[site_id])
+                                               mol_obj.n_ks[site_id], v_tilde)
             output_array[output_index] = error_i
             output_index += 1
-        two_rdm = mol_obj.embedded_mol.calculate_2rdm_fh(index=0)
-        on_site_repulsion_i = two_rdm[0, 0, 0, 0] * u_0_dimer[0, 0, 0, 0]
-        v_term_repulsion_i = np.sum(two_rdm * u_0_dimer) - on_site_repulsion_i
-        for every_site_id in mol_obj.equiv_atom_groups[site_group]:
-            mol_obj.kinetic_contributions[every_site_id] = 2 * h_tilde[1, 0] * mol_obj.embedded_mol.one_rdm[1, 0]
-            mol_obj.onsite_repulsion[every_site_id] = on_site_repulsion_i
-            mol_obj.imp_potential[every_site_id] = mu_imp
-            mol_obj.v_term_repulsion[every_site_id] = v_term_repulsion_i
+        mol_obj.update_variables_embedded(v_tilde, h_tilde, site_group, mu_imp)
+        # two_rdm = mol_obj.embedded_mol.calculate_2rdm_fh_with_v(v_tilde)
+        # on_site_repulsion_i = two_rdm[0, 0, 0, 0] * u_0_dimer[0, 0, 0, 0]
+        # v_term_repulsion_i = np.sum(two_rdm * v_tilde)
+        # for every_site_id in mol_obj.equiv_atom_groups[site_group]:
+        #     mol_obj.kinetic_contributions[every_site_id] = 2 * h_tilde[1, 0] * mol_obj.embedded_mol.one_rdm[1, 0]
+        #     mol_obj.onsite_repulsion[every_site_id] = on_site_repulsion_i
+        #     mol_obj.imp_potential[every_site_id] = mu_imp
+        #     mol_obj.v_term_repulsion[every_site_id] = v_term_repulsion_i
         first_iteration = False
     rms = np.sqrt(np.mean(np.square(output_array)))
     # print(f"for input {''.join(['{num:{dec}}'.format(num=cell, dec='+10.4f') for cell in mol_obj.v_hxc])} error is"
@@ -639,21 +661,22 @@ def cost_function_whole_block(v_hxc_approximation: np.array, mol_obj: Molecule) 
         h_tilde = p @ (change_indices(mol_obj.t, site_id) + np.diag(change_indices(mol_obj.v_s, site_id))) @ p
 
         h_tilde_dimer = h_tilde[:site_i_len, :site_i_len]
-        if mol_obj.v_term:
-            u4d = np.zeros(mol_obj.u4d.shape)
-            u4d[site_id, site_id, :, :] += mol_obj.u4d[site_id, site_id, :, :] / 2
-            u4d[:, :, site_id, site_id] += mol_obj.u4d[:, :, site_id, site_id] / 2
+        if mol_obj.v_term is not None:
+            v_term = np.zeros((mol_obj.Ns, mol_obj.Ns))
+            v_term[site_id, :] += mol_obj.v_term[site_id, :] / 2
+            v_term[:, site_id] += mol_obj.v_term[:, site_id] / 2
             if site_id == 0:
-                u4d_correct_indices = u4d
+                v_term_correct_indices = v_term
             else:
                 mask = np.arange(mol_obj.Ns)
                 mask[0] = site_id
                 mask[site_id] = 0
-                u4d_correct_indices = u4d[:, :, :, mask][:, :, mask, :][:, mask, :, :][mask, :, :, :]
-            u_0_dimer = np.einsum('ap, bq, cr, ds, abcd -> pqrs', p, p, p, p, u4d_correct_indices)[:2, :2, :2, :2]
+                v_term_correct_indices = v_term[:, mask][mask, :]
+            v_tilde = np.einsum('ip, iq, jr, js, ij -> pqrs', p, p, p, p, v_term_correct_indices)[:2, :2, :2, :2]
         else:
-            u_0_dimer = np.zeros((2, 2, 2, 2), dtype=np.float64)
-            u_0_dimer[0, 0, 0, 0] += mol_obj.u[site_id]
+            v_tilde = None
+        u_0_dimer = np.zeros((2, 2, 2, 2), dtype=np.float64)
+        u_0_dimer[0, 0, 0, 0] += mol_obj.u[site_id]
 
         mol_obj.h_tilde_dimer[site_group] = h_tilde_dimer
 
@@ -661,19 +684,20 @@ def cost_function_whole_block(v_hxc_approximation: np.array, mol_obj: Molecule) 
             if 0 not in mol_obj.equiv_atom_groups[site_group]:
                 raise Exception("Unexpected behaviour: First impurity site should have been the 0th site")
             sol = sc_opt.root_scalar(cost_function_casci_root,
-                                     args=(mol_obj.embedded_mol, h_tilde_dimer, u_0_dimer, mol_obj.n_ks[site_id]),
+                                     args=(mol_obj.embedded_mol, h_tilde_dimer, u_0_dimer, mol_obj.n_ks[site_id],
+                                           v_tilde),
                                      bracket=[-5, 15], method='brentq', options={'xtol': 1e-6})
             mu_imp, function_calls = sol.root, sol.function_calls
             mu_imp_first = mu_imp
         else:
             mu_imp = mu_imp_first + mol_obj.v_hxc[site_id]
             error_i = cost_function_casci_root(mu_imp, mol_obj.embedded_mol, h_tilde_dimer, u_0_dimer,
-                                               mol_obj.n_ks[site_id])
+                                               mol_obj.n_ks[site_id], v_tilde)
             output_array[output_index] = error_i
             output_index += 1
         two_rdm = mol_obj.embedded_mol.calculate_2rdm_fh(index=0)
         on_site_repulsion_i = two_rdm[0, 0, 0, 0] * u_0_dimer[0, 0, 0, 0]
-        v_term_repulsion_i = np.sum(two_rdm * u_0_dimer) - on_site_repulsion_i
+        v_term_repulsion_i = np.sum(two_rdm * v_tilde)
         for every_site_id in mol_obj.equiv_atom_groups[site_group]:
             mol_obj.kinetic_contributions[every_site_id] = 2 * h_tilde[1, 0] * mol_obj.embedded_mol.one_rdm[1, 0]
             mol_obj.onsite_repulsion[every_site_id] = on_site_repulsion_i
@@ -693,12 +717,12 @@ def cost_function_whole_block(v_hxc_approximation: np.array, mol_obj: Molecule) 
     return output_array
 
 
-def cost_function_casci_root(mu_imp, embedded_mol, h_tilde_dimer, u_0_dimer, desired_density):
+def cost_function_casci_root(mu_imp, embedded_mol, h_tilde_dimer, u_0_dimer, desired_density, v_tilde):
     # mu_imp = mu_imp[0]
     global ITERATION_NUM
     ITERATION_NUM += 1
     mu_imp_array = np.array([[mu_imp, 0], [0, 0]])
-    embedded_mol.build_hamiltonian_fermi_hubbard(h_tilde_dimer - mu_imp_array, u_0_dimer)
+    embedded_mol.build_hamiltonian_fermi_hubbard(h_tilde_dimer - mu_imp_array, u_0_dimer, v_term=v_tilde)
     embedded_mol.diagonalize_hamiltonian()
 
     density_dimer = embedded_mol.calculate_1rdm(index=0)
