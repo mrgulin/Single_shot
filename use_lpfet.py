@@ -5,7 +5,7 @@ from datetime import datetime
 
 name = 'chain1'
 mol1 = lpfet.Molecule(6, 6, name)
-mol_full = lpfet.class_Quant_NBody.QuantNBody(6, 6)
+mol_full = lpfet.class_Quant_NBody.HamiltonianV2(6, 6)
 mol_full.build_operator_a_dagger_a()
 first = False
 nodes_dict, edges_dict = essentials.generate_ring4(i=1, n_sites=6, U_param=5)

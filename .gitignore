@@ -133,7 +133,7 @@ dmypy.json
 # Results from calculations
 *Single_loop*
 *Procedure_log*
-LPFET/results/
+results/
 LPFET_homogeneous/results
 results_sc/
 Trash/

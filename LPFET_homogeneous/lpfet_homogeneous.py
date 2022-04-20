@@ -67,7 +67,7 @@ class Molecule:
         self.n_ks = np.array((), dtype=np.float64)  # Densities of KS sysyem
 
         # Quant_NBody objects
-        # self.whole_mol = class_Quant_NBody.QuantNBody(self.Ns, self.Ne)
+        # self.whole_mol = class_qnb.QuantNBody(self.Ns, self.Ne)
         self.embedded_mol = class_Quant_NBody.QuantNBody(2, 2)
         self.embedded_mol.build_operator_a_dagger_a()
 

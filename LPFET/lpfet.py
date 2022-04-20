@@ -1,3 +1,4 @@
+import lpfet
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy.optimize
@@ -8,8 +9,8 @@ import networkx as nx
 from sklearn.linear_model import LinearRegression
 from typing import Union
 import typing
-import Quant_NBody  # Folder Quant_NBody has to be in the sys.path or installed as package.
-import Quant_NBody.class_Quant_NBody as class_Quant_NBody
+import quantnbody as qnb  # Folder Quant_NBody has to be in the sys.path or installed as package.
+import quantnbody_class_new as class_qnb
 from essentials import generate_1rdm
 
 COMPENSATION_1_RATIO = 0.5  # for the Molecule.update_v_hxc
@@ -116,8 +117,8 @@ class Molecule:
         self.per_site_energy = np.array(())
 
         # Quant_NBody objects
-        # self.whole_mol = class_Quant_NBody.QuantNBody(self.Ns, self.Ne)
-        self.embedded_mol = class_Quant_NBody.QuantNBody(2, 2)
+        # self.whole_mol = class_qnb.QuantNBody(self.Ns, self.Ne)
+        self.embedded_mol = class_qnb.HamiltonianV2(2, 2)
         self.embedded_mol_dict = dict()
         self.embedded_mol.build_operator_a_dagger_a()
 
@@ -213,7 +214,7 @@ class Molecule:
 
         for block_i in blocks:
             block_size = len(block_i)
-            self.embedded_mol_dict[block_size] = class_Quant_NBody.QuantNBody(block_size * 2, block_size * 2)
+            self.embedded_mol_dict[block_size] = class_qnb.HamiltonianV2(block_size * 2, block_size * 2)
             self.embedded_mol_dict[block_size].build_operator_a_dagger_a()
         self.block_hh = True
 
@@ -256,6 +257,7 @@ class Molecule:
             model = scipy.optimize.root(cost_function_whole_block, starting_approximation,
                                         args=(self,), options={'fatol': 2e-3}, method='df-sane')
         else:
+            # starting_approximation *= 0
             model = scipy.optimize.root(cost_function_whole, starting_approximation,
                                         args=(self,), options={'fatol': 2e-3}, method='df-sane')
         if not model.success or np.sum(np.square(model.fun)) > 0.01:
@@ -291,7 +293,7 @@ class Molecule:
             t_correct_imp = change_indices(self.t, site_id)
             v_s_correct_imp = change_indices(self.v_s, site_id)
 
-            p, v = Quant_NBody.householder_transformation(y_a_correct_imp)
+            p, v = qnb.tools.householder_transformation(y_a_correct_imp)
             h_tilde = p @ (t_correct_imp + np.diag(v_s_correct_imp)) @ p
 
             h_tilde_dimer = h_tilde[:2, :2]
@@ -433,12 +435,12 @@ class Molecule:
 
         return total_energy
 
-    def compare_densities_fci(self, pass_object: Union[bool, class_Quant_NBody.QuantNBody] = False,
+    def compare_densities_fci(self, pass_object: Union[bool, class_qnb.HamiltonianV2] = False,
                               calculate_per_site=False):
         if type(pass_object) != bool:
             mol_full = pass_object
         else:
-            mol_full = class_Quant_NBody.QuantNBody(self.Ns, self.Ne)
+            mol_full = class_qnb.HamiltonianV2(self.Ns, self.Ne)
             mol_full.build_operator_a_dagger_a()
         u4d = np.zeros((self.Ns, self.Ns, self.Ns, self.Ns))
         for i in range(self.Ns):
@@ -449,27 +451,29 @@ class Molecule:
             v_tilde = np.einsum('ip, iq, jr, js, ij -> pqrs', p, p, p, p, self.v_term)
         mol_full.build_hamiltonian_fermi_hubbard(self.t + np.diag(self.v_ext), u4d, v_term=v_tilde)
         mol_full.diagonalize_hamiltonian()
-        y_ab = mol_full.calculate_1rdm()
+        y_ab = mol_full.calculate_1rdm_spin_free() / 2
         densities = y_ab.diagonal()
         kinetic_contribution = np.sum(y_ab * self.t) * 2
         v_ext_contribution = np.sum(2 * self.v_ext * densities)
-        total_energy = mol_full.ei_val[0]
+        total_energy = mol_full.eig_values[0]
         u_contribution = total_energy - kinetic_contribution - v_ext_contribution
 
         if calculate_per_site:
             per_site_array = np.zeros(self.Ns, dtype=[('tot', float), ('kin', float), ('v_ext', float), ('u', float),
                                                       ('v_term', float)])
 
-            two_rdm = mol_full.calculate_2rdm_fh_with_v(v_tilde)
-            on_site_repulsion_array = two_rdm * v_tilde
+            two_rdm_u = mol_full.build_2rdm_fh_on_site_repulsion(u4d)
+            if self.v_term is not None:
+                two_rdm_v_term = mol_full.build_2rdm_fh_dipolar_interactions(v_tilde)
+                on_site_repulsion_array = two_rdm_v_term * v_tilde
+                for site in range(self.Ns):
+                    per_site_array[site]['v_term'] = 0.5 * (np.sum(on_site_repulsion_array[site, site, :, :]) +
+                                                            np.sum(on_site_repulsion_array[:, :, site, site]))
             t_multiplied_matrix = y_ab * self.t * 2
             for site in range(self.Ns):
                 per_site_array[site]['v_ext'] = 2 * self.v_ext[site] * densities[site]
-                per_site_array[site]['u'] = two_rdm[site, site, site, site] * self.u[site]
+                per_site_array[site]['u'] = two_rdm_u[site, site, site, site] * self.u[site]
                 per_site_array[site]['kin'] = np.sum(t_multiplied_matrix[site])
-                per_site_array[site]['v_term'] = 0.5 * (np.sum(on_site_repulsion_array[site, site, :, :]) +
-                                                        np.sum(on_site_repulsion_array[:, :, site, site]))
-                per_site_array[site]['v_term'] -= on_site_repulsion_array[site, site, site, site]
                 per_site_array[site]['tot'] = sum(per_site_array[site])
             u_contribution = np.sum(per_site_array['u'])
             v_term_contribution = np.sum(per_site_array['v_term'])
@@ -477,7 +481,7 @@ class Molecule:
             return y_ab, mol_full, (total_energy, kinetic_contribution, v_ext_contribution,
                                     u_contribution, v_term_contribution), per_site_array
         print("FCI densities (per spin):", densities)
-        print(f'FCI energy: {mol_full.ei_val[0]}')
+        print(f'FCI energy: {mol_full.eig_values[0]}')
         return y_ab, mol_full, (total_energy, kinetic_contribution, v_ext_contribution,
                                 u_contribution, 0)
 
@@ -543,27 +547,51 @@ class Molecule:
 
         self.oscillation_correction_dict = dict()
 
-    def update_variables_embedded(self, v_tilde, h_tilde, site_group, mu_imp, embedded_mol):
-        two_rdm = embedded_mol.calculate_2rdm_fh_with_v(v_tilde)
-        on_site_repulsion_i = two_rdm[0, 0, 0, 0] * self.u[self.equiv_atom_groups[site_group][0]]
-        v_term_repulsion_i = np.sum(two_rdm * v_tilde)
+    def update_variables_embedded(self, v_tilde, h_tilde, site_group, mu_imp, embedded_mol, u_0_dimer=None):
+        two_rdm_u = embedded_mol.build_2rdm_fh_on_site_repulsion(u_0_dimer)
+        on_site_repulsion_i = two_rdm_u[0, 0, 0, 0] * u_0_dimer[0, 0, 0, 0]
+        if self.v_term is not None:
+            two_rdm_v_term = embedded_mol.build_2rdm_fh_dipolar_interactions(v_tilde)
+            v_term_repulsion_i = np.sum(two_rdm_v_term * v_tilde)
+        else:
+            v_term_repulsion_i = 0
         for every_site_id in self.equiv_atom_groups[site_group]:
-            self.kinetic_contributions[every_site_id] = 2 * h_tilde[1, 0] * embedded_mol.one_rdm[1, 0]
+            self.kinetic_contributions[every_site_id] = 2 * h_tilde[1, 0] * (embedded_mol.one_rdm[1, 0] / 2)
             self.onsite_repulsion[every_site_id] = on_site_repulsion_i
             self.imp_potential[every_site_id] = mu_imp
             self.v_term_repulsion[every_site_id] = v_term_repulsion_i
-        something like:
-        self.imp_potential[self.blocks[site_group]] = mu_imp
-        But now we see that there is a problem with the sites and blocks :c
+        # something like:
+        # self.imp_potential[self.blocks[site_group]] = mu_imp
+        # But now we see that there is a problem with the sites and blocks :c
 
-    def transform_v_term(self, p, site_id):
+    def update_variables_embedded_block(self, v_tilde, h_tilde, site_group, mu_imp,
+                                        embedded_mol: class_qnb.HamiltonianV2, u_tilde):
+        two_rdm_on_site = embedded_mol.build_2rdm_fh_on_site_repulsion(u_tilde)
+        for one_site_id, one_site in enumerate(site_group):
+            equivalent_atoms = [i for i in mol_obj.equiv_atoms_in_block if one_site in i][0]
+            v_term_one = self.transform_v_term(p, site_group, one_site)
+            v_term_repulsion_i = np.sum(embedded_mol.build_2rdm_fh_dipolar_interactions(v_term_one) * v_term_one)
+            on_site_repulsion_i = two_rdm_on_site[one_site_id, one_site_id, one_site_id, one_site_id] * \
+                u_tilde[one_site_id, one_site_id, one_site_id, one_site_id]
+            for every_site_id in equivalent_atoms:
+                # Kinetic contribution???
+                self.kinetic_contributions[every_site_id] = 2 * h_tilde[1, 0] * embedded_mol.one_rdm[1, 0]
+                self.onsite_repulsion[every_site_id] = on_site_repulsion_i
+                self.imp_potential[every_site_id] = mu_imp
+                self.v_term_repulsion[every_site_id] = v_term_repulsion_i
+
+    def transform_v_term(self, p, site_id, calculate_one_site=-1):
         if isinstance(site_id, (int, np.int32, np.int64)):
             site_id = [site_id]
         impurity_size = len(site_id)
         if self.v_term is not None:
             v_term = np.zeros((self.Ns, self.Ns))
-            v_term[site_id, :] += self.v_term[site_id, :]
-            v_term[:, site_id] += self.v_term[:, site_id]
+            if calculate_one_site == -1:
+                change_id_obj = site_id
+            else:
+                change_id_obj = calculate_one_site
+            v_term[change_id_obj, :] += self.v_term[change_id_obj, :] / 2
+            v_term[:, change_id_obj] += self.v_term[:, change_id_obj] / 2
             if site_id == list(range(impurity_size)):
                 v_term_correct_indices = v_term
             else:
@@ -571,10 +599,9 @@ class Molecule:
                 mask[range(impurity_size)] = site_id
                 mask[site_id] = range(impurity_size)
                 v_term_correct_indices = v_term[:, mask][mask, :]
-            v_tilde = np.einsum('ip, iq, jr, js, ij -> pqrs', p, p, p, p, v_term_correct_indices)[:2 * impurity_size,
-                                                                                                  :2 * impurity_size,
-                                                                                                  :2 * impurity_size,
-                                                                                                  :2 * impurity_size]
+            v_tilde = np.einsum('ip, iq, jr, js, ij -> pqrs', p, p, p, p,
+                                v_term_correct_indices)[:2 * impurity_size, :2 * impurity_size, :2 * impurity_size,
+                                                        :2 * impurity_size]
         else:
             v_tilde = None
         return v_tilde
@@ -603,7 +630,7 @@ def cost_function_whole(v_hxc_approximation: np.array, mol_obj: Molecule) -> np.
     for site_group, group_tuple in enumerate(mol_obj.equiv_atom_groups):
         site_id = group_tuple[0]
         y_a_correct_imp = change_indices(mol_obj.y_a, site_id)
-        p, v = Quant_NBody.householder_transformation(y_a_correct_imp)
+        p, v = qnb.tools.householder_transformation(y_a_correct_imp)
         h_tilde = p @ (change_indices(mol_obj.t, site_id) + np.diag(change_indices(mol_obj.v_s, site_id))) @ p
         h_tilde_dimer = h_tilde[:2, :2]
         v_tilde = mol_obj.transform_v_term(p, site_id)
@@ -617,7 +644,7 @@ def cost_function_whole(v_hxc_approximation: np.array, mol_obj: Molecule) -> np.
                                              args=(
                                                  mol_obj.embedded_mol, h_tilde_dimer, u_0_dimer, mol_obj.n_ks[site_id],
                                                  v_tilde),
-                                             bracket=[-5, 15], method='brentq', options={'xtol': 1e-6})
+                                             bracket=[-50, 50], method='brentq', options={'xtol': 1e-6})
             mu_imp, function_calls = sol.root, sol.function_calls
             mu_imp_first = mu_imp
         else:
@@ -626,7 +653,7 @@ def cost_function_whole(v_hxc_approximation: np.array, mol_obj: Molecule) -> np.
                                                mol_obj.n_ks[site_id], v_tilde)
             output_array[output_index] = error_i
             output_index += 1
-        mol_obj.update_variables_embedded(v_tilde, h_tilde, site_group, mu_imp, mol_obj.embedded_mol)
+        mol_obj.update_variables_embedded(v_tilde, h_tilde, site_group, mu_imp, mol_obj.embedded_mol, u_0_dimer)
         first_iteration = False
     rms = np.sqrt(np.mean(np.square(output_array)))
     print(f"for input {''.join(['{num:{dec}}'.format(num=cell, dec='+10.2e') for cell in mol_obj.v_hxc])} error is"
@@ -654,7 +681,7 @@ def cost_function_whole_block(v_hxc_approximation: np.array, mol_obj: Molecule) 
         site_id = mol_obj.blocks[block_id]
         block_size = len(site_id)
         y_a_correct_imp = change_indices(mol_obj.y_a, site_id)
-        gamma_tilde, p, moore_penrose_inv = Quant_NBody.block_householder_transformation(y_a_correct_imp, block_size)
+        p, moore_penrose_inv = qnb.tools.block_householder_transformation(y_a_correct_imp, block_size)
         h_tilde = p @ (change_indices(mol_obj.t, site_id) + np.diag(change_indices(mol_obj.v_s, site_id))) @ p
         h_tilde_dimer = h_tilde[:block_size * 2, :block_size * 2]
         v_tilde = mol_obj.transform_v_term(p, site_id)
@@ -678,7 +705,9 @@ def cost_function_whole_block(v_hxc_approximation: np.array, mol_obj: Molecule) 
         error_i = cost_function_casci_root(mu_imp, mol_obj.embedded_mol_dict[block_size], h_tilde_dimer, u_0_dimer,
                                            mol_obj.n_ks[site_id], v_tilde)
         output_array_non_reduced[site_id] = error_i
-        mol_obj.update_variables_embedded(v_tilde, h_tilde, site_group, mu_imp, mol_obj.embedded_mol_dict[block_size])
+
+        mol_obj.update_variables_embedded_block(v_tilde, h_tilde, site_group, mu_imp[one_site_id],
+                                                mol_obj.embedded_mol_dict[block_size], u_0_dimer)
         first_iteration = False
     if np.any(np.isnan(output_array_non_reduced)):
         raise Exception("Didn't cover all groups")
@@ -709,7 +738,7 @@ def cost_function_casci_root(mu_imp, embedded_mol, h_tilde_dimer, u_0_dimer, des
     mu_imp_array[half_diagonal, half_diagonal] = mu_imp
     embedded_mol.build_hamiltonian_fermi_hubbard(h_tilde_dimer - mu_imp_array, u_0_dimer, v_term=v_tilde)
     embedded_mol.diagonalize_hamiltonian()
-    density_dimer = embedded_mol.calculate_1rdm(index=0)
+    density_dimer = embedded_mol.calculate_1rdm_spin_free(index=0) / 2  # per spin!
     return density_dimer[half_diagonal, half_diagonal] - desired_density
 
 

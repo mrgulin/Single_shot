@@ -41,7 +41,7 @@ def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecul
         if not os.path.isdir(one_path):
             os.mkdir(one_path)
     mol1 = lpfet.Molecule(n_sites, n_electron, name)
-    mol_full = lpfet.class_Quant_NBody.QuantNBody(n_sites, n_electron)
+    mol_full = lpfet.class_Quant_NBody.HamiltonianV2(n_sites, n_electron)
     mol_full.build_operator_a_dagger_a()
     y = []
     v_hxc_progression_list = []
@@ -94,7 +94,7 @@ def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecul
         y_ab, mol_fci, energy_ref_i, energy_ref_per_site_i = mol1.compare_densities_fci(pass_object=mol_full,
                                                                                         calculate_per_site=True)
         time4 = datetime.now()
-        v_hxc_correct = mol_fci.calculate_v_hxc(np.zeros(n_sites) + 1)
+        v_hxc_correct = mol_fci.calculate_v_hxc(mol1.v_hxc)
         time5 = datetime.now()
         print(v_hxc_correct)
         if type(v_hxc_correct) == bool:
