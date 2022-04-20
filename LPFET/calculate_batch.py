@@ -41,7 +41,7 @@ def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecul
         if not os.path.isdir(one_path):
             os.mkdir(one_path)
     mol1 = lpfet.Molecule(n_sites, n_electron, name)
-    mol_full = lpfet.class_Quant_NBody.HamiltonianV2(n_sites, n_electron)
+    mol_full = lpfet.class_qnb.HamiltonianV2(n_sites, n_electron)
     mol_full.build_operator_a_dagger_a()
     y = []
     v_hxc_progression_list = []
@@ -186,7 +186,7 @@ def calculate_graphs(folder_name, x, y, y_ref, y_simple, energy, energy_ref, v_h
         box = ax.get_position()
         ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
         ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-        ax.set_ylim(0, 1)
+        ax.set_ylim(0, 2)
         # plt.savefig(f'{folder_name}/occupation/progression_{x_i}.png', dpi=150, bbox_inches='tight')
         plt.savefig(f'{folder_name}/occupation/progression_{x_i}.svg', dpi=150, bbox_inches='tight')
         plt.close(fig)
@@ -232,7 +232,7 @@ def calculate_graphs(folder_name, x, y, y_ref, y_simple, energy, energy_ref, v_h
     plt.legend(loc='upper center', bbox_to_anchor=(0.5, 1.05),
                ncol=3, fancybox=True, shadow=True)
     ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-    ax.set_ylim(0, 1)
+    ax.set_ylim(0, 2)
     # plt.savefig(f'{folder_name}/Densities.png', dpi=300, bbox_inches='tight')
     plt.savefig(f'{folder_name}/Densities.svg', dpi=300, bbox_inches='tight')
 

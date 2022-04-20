@@ -29,7 +29,7 @@ def generate_1rdm(Ns, Ne, wave_function):
     for k in range(int(Ne / 2)):  # go through all orbitals that are occupied!
         vec_i = wave_function[:, k][np.newaxis]
         y += vec_i.T @ vec_i  #
-    return y
+    return y * 2
 
 
 def generate_huckel_hamiltonian(n_s, number_of_electrons=2, t=1):

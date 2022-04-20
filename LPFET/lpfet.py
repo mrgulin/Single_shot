@@ -317,7 +317,7 @@ class Molecule:
                 # the algorithm does mu_imp -> v_hxc (mu_imp - mu_imp0 + mu_imp0)
                 v_hxc_0 = mu_imp_first
             self.update_v_hxc(site_group, v_hxc_0 + delta_mu_imp, oscillation_compensation)
-
+            self.embedded_mol.calculate_1rdm_spin_free()
             two_rdm = self.embedded_mol.calculate_2rdm_fh(index=0)
             on_site_repulsion_i = two_rdm[0, 0, 0, 0] * u_0_dimer[0, 0, 0, 0]
             v_term_repulsion_i = np.sum(two_rdm * v_tilde)
@@ -410,7 +410,7 @@ class Molecule:
         per_site_array = np.zeros(self.Ns, dtype=[('tot', float), ('kin', float), ('v_ext', float), ('u', float),
                                                   ('v_term', float)])
         per_site_array['kin'] = self.kinetic_contributions
-        per_site_array['v_ext'] = 2 * self.v_ext * self.n_ks
+        per_site_array['v_ext'] = self.v_ext * self.n_ks
         per_site_array['u'] = self.onsite_repulsion
         per_site_array['v_term'] = self.v_term_repulsion
         per_site_array['tot'] = np.sum(np.array(per_site_array[['kin', 'v_ext', 'u', 'v_term']].tolist()), axis=1)
@@ -430,7 +430,7 @@ class Molecule:
                   f'{" ".join([f"{i:9.4f}" for i in self.onsite_repulsion])}{u_contribution:12.7f}\n'
                   f'{"V-term repulsion":30s}{" ".join([f"{i:9.4f}" for i in self.v_term_repulsion])}'
                   f'{v_term_contribution:12.7f}\n'
-                  f'{"Occupations":30s}{" ".join([f"{i:9.4f}" for i in self.n_ks * 2])}{np.sum(self.n_ks) * 2:12.7f}')
+                  f'{"Occupations":30s}{" ".join([f"{i:9.4f}" for i in self.n_ks])}{np.sum(self.n_ks) * 2:12.7f}')
             print(f'{"_" * 20}\nTotal energy:{total_energy}')
 
         return total_energy
@@ -451,10 +451,10 @@ class Molecule:
             v_tilde = np.einsum('ip, iq, jr, js, ij -> pqrs', p, p, p, p, self.v_term)
         mol_full.build_hamiltonian_fermi_hubbard(self.t + np.diag(self.v_ext), u4d, v_term=v_tilde)
         mol_full.diagonalize_hamiltonian()
-        y_ab = mol_full.calculate_1rdm_spin_free() / 2
+        y_ab = mol_full.calculate_1rdm_spin_free()
         densities = y_ab.diagonal()
-        kinetic_contribution = np.sum(y_ab * self.t) * 2
-        v_ext_contribution = np.sum(2 * self.v_ext * densities)
+        kinetic_contribution = np.sum(y_ab * self.t)
+        v_ext_contribution = np.sum(self.v_ext * densities)
         total_energy = mol_full.eig_values[0]
         u_contribution = total_energy - kinetic_contribution - v_ext_contribution
 
@@ -469,9 +469,9 @@ class Molecule:
                 for site in range(self.Ns):
                     per_site_array[site]['v_term'] = 0.5 * (np.sum(on_site_repulsion_array[site, site, :, :]) +
                                                             np.sum(on_site_repulsion_array[:, :, site, site]))
-            t_multiplied_matrix = y_ab * self.t * 2
+            t_multiplied_matrix = y_ab * self.t
             for site in range(self.Ns):
-                per_site_array[site]['v_ext'] = 2 * self.v_ext[site] * densities[site]
+                per_site_array[site]['v_ext'] = self.v_ext[site] * densities[site]
                 per_site_array[site]['u'] = two_rdm_u[site, site, site, site] * self.u[site]
                 per_site_array[site]['kin'] = np.sum(t_multiplied_matrix[site])
                 per_site_array[site]['tot'] = sum(per_site_array[site])
@@ -556,7 +556,7 @@ class Molecule:
         else:
             v_term_repulsion_i = 0
         for every_site_id in self.equiv_atom_groups[site_group]:
-            self.kinetic_contributions[every_site_id] = 2 * h_tilde[1, 0] * (embedded_mol.one_rdm[1, 0] / 2)
+            self.kinetic_contributions[every_site_id] = h_tilde[1, 0] * (embedded_mol.one_rdm[1, 0])
             self.onsite_repulsion[every_site_id] = on_site_repulsion_i
             self.imp_potential[every_site_id] = mu_imp
             self.v_term_repulsion[every_site_id] = v_term_repulsion_i
@@ -738,7 +738,7 @@ def cost_function_casci_root(mu_imp, embedded_mol, h_tilde_dimer, u_0_dimer, des
     mu_imp_array[half_diagonal, half_diagonal] = mu_imp
     embedded_mol.build_hamiltonian_fermi_hubbard(h_tilde_dimer - mu_imp_array, u_0_dimer, v_term=v_tilde)
     embedded_mol.diagonalize_hamiltonian()
-    density_dimer = embedded_mol.calculate_1rdm_spin_free(index=0) / 2  # per spin!
+    density_dimer = embedded_mol.calculate_1rdm_spin_free(index=0)
     return density_dimer[half_diagonal, half_diagonal] - desired_density
 
 
