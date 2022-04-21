@@ -10,7 +10,7 @@ import matplotlib as mpl
 
 
 def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecule_name, u_param=None, i_param=None,
-                   delta_x=None, max_value=None, r_param=None):
+                   delta_x=None, max_value=None, r_param=None, force=True):
     lpfet.COMPENSATION_5_FACTOR = 1
     lpfet.COMPENSATION_5_FACTOR2 = 1
     lpfet.COMPENSATION_1_RATIO = 0.25
@@ -40,6 +40,12 @@ def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecul
     for one_path in [folder_name, folder_name + 'v_hxc', folder_name + 'occupation']:
         if not os.path.isdir(one_path):
             os.mkdir(one_path)
+
+    if not force:
+        if os.path.isfile(folder_name + "/Energy_errors_per_site.svg"):
+            print("THERE IS ALREADY DATA. FUNCTION WILL EXIT.")
+            return 0
+
     mol1 = lpfet.Molecule(n_sites, n_electron, name)
     mol_full = lpfet.class_qnb.HamiltonianV2(n_sites, n_electron)
     mol_full.build_operator_a_dagger_a()
@@ -57,6 +63,7 @@ def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecul
     old_v_hxc = None
     starting_approximation_c_hxc = None
     time_list = []
+    approx_len = None
     with open(f"{folder_name}systems.txt", "w") as my_file:
         my_file.write("")
     x_label = ""
@@ -73,7 +80,6 @@ def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecul
             for ind in range(approx_len):
                 starting_approximation_c_hxc[ind] = old_v_hxc[mol1.equiv_atom_groups[ind + 1][0]]
             mol1.clear_object(name)
-        first = False
         print(f'\n\n{i:.1f}, {i / max(x) * 100:.1f}%: ', end=' ')
         nodes_dict, edges_dict = model_function(i_param, n_sites, u_param)
         t, v_ext, u = lpfet.generate_from_graph(nodes_dict, edges_dict)
@@ -81,6 +87,8 @@ def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecul
         with open(f"{folder_name}systems.txt", "a") as my_file:
             my_file.write(f"\n\n{repr(t)}\n{repr(v_ext)}\n{repr(u)}")
         mol1.add_parameters(u, t, v_ext, r_param)
+        if len(mol1.equiv_atom_groups) - 1 != approx_len:
+            starting_approximation_c_hxc = None
         time1 = datetime.now()
         # mol1.self_consistent_loop(num_iter=50, tolerance=1E-6, oscillation_compensation=[5, 1], v_hxc_0=0)
         mol1.find_solution_as_root(starting_approximation_c_hxc)
@@ -88,6 +96,7 @@ def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecul
         # mol1.optimize_solution(5, 0.2)
         mol1.calculate_energy(False)
         time3 = datetime.now()
+        first = False
         correction_dict_list.append(mol1.oscillation_correction_dict)
         y.append(mol1.density_progress)
         y_simple.append(mol1.n_ks)
@@ -219,6 +228,7 @@ def calculate_graphs(folder_name, x, y, y_ref, y_simple, energy, energy_ref, v_h
     fig.legend(loc='center left', bbox_to_anchor=(1, 0.5))
     # plt.savefig(f'{folder_name}/Energy_errors.png', dpi=300, bbox_inches='tight')
     plt.savefig(f'{folder_name}/Energy_errors.svg', dpi=300, bbox_inches='tight')
+    plt.close(fig)
 
     # plot occupations
     fig, ax = plt.subplots(1, 1, figsize=(7, 4))
@@ -235,6 +245,7 @@ def calculate_graphs(folder_name, x, y, y_ref, y_simple, energy, energy_ref, v_h
     ax.set_ylim(0, 2)
     # plt.savefig(f'{folder_name}/Densities.png', dpi=300, bbox_inches='tight')
     plt.savefig(f'{folder_name}/Densities.svg', dpi=300, bbox_inches='tight')
+    plt.close(fig)
 
     # plot hxc potential
     fig, ax = plt.subplots(1, 1, figsize=(7, 4))
@@ -253,6 +264,7 @@ def calculate_graphs(folder_name, x, y, y_ref, y_simple, energy, energy_ref, v_h
     ax.set_title("Trend of v_hxc. LPFET; values are corrected so averages match")
     # plt.savefig(f'{folder_name}/v_hxc_trend.png', dpi=300, bbox_inches='tight')
     plt.savefig(f'{folder_name}/v_hxc_trend.svg', dpi=300, bbox_inches='tight')
+    plt.close(fig)
 
     fig, ax = plt.subplots(1, 1, figsize=(6, 6))
     fig.tight_layout()
@@ -264,3 +276,4 @@ def calculate_graphs(folder_name, x, y, y_ref, y_simple, energy, energy_ref, v_h
     fig.legend(loc='center left', bbox_to_anchor=(1, 0.5))
     # fig.savefig(f'{folder_name}/Energy_errors_per_site.png', dpi=300, bbox_inches='tight')
     fig.savefig(f'{folder_name}/Energy_errors_per_site.svg', dpi=300, bbox_inches='tight')
+    plt.close(fig)
