@@ -1,3 +1,4 @@
+import essentials
 import lpfet
 import numpy as np
 import matplotlib.pyplot as plt
@@ -253,7 +254,8 @@ class Molecule:
                     group_element_site = group_tuple[0]
                     starting_approximation[group_key - 1] = (self.v_ext[0] - self.v_ext[group_element_site]) * 0.5
         elif len(starting_approximation) != len(eq_atom) - 1:
-            raise Exception('Wrong length of the starting approximation')
+            raise Exception(f'Wrong length of the starting approximation: len(starting_approximation) != '
+                            f'len(eq_atom) - 1 ({len(starting_approximation)} != {len(eq_atom) - 1}')
         if self.block_hh:
             model = scipy.optimize.root(cost_function_whole_block, starting_approximation,
                                         args=(self,), options={'fatol': 2e-3, "maxfev": ROOT_LPFET_SOLVER_MAX_ITER},
@@ -273,7 +275,15 @@ class Molecule:
     def calculate_ks(self):
         self.v_s = self.v_hxc + self.v_ext
         self.h_ks = self.t + np.diag(self.v_s)
-        self.epsilon_s, self.wf_ks = np.linalg.eigh(self.h_ks, 'U')
+        try:
+            self.epsilon_s, self.wf_ks = np.linalg.eigh(self.h_ks, 'U')
+        except:
+            print(f'!!!!{self.v_ext}, {self.Ne}, {self.u}')
+            print(f'!!!!{self.v_ext}, {self.Ne}, {self.u}')
+            print(f'!!!!{self.v_ext}, {self.Ne}, {self.u}')
+            print(f'!!!!{self.v_ext}, {self.Ne}, {self.u}')
+
+            raise np.linalg.LinAlgError(f"Eigenvalues did not converge\n{essentials.print_matrix(self.h_ks)}")
         self.y_a = generate_1rdm(self.Ns, self.Ne, self.wf_ks)
         if self.Ne > 0:
             e_homo = self.epsilon_s[(self.Ne - 1) // 2]
