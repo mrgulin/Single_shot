@@ -708,8 +708,15 @@ def cost_function_whole_block(v_hxc_approximation: np.array, mol_obj: Molecule) 
                                            mol_obj.n_ks[site_id], v_tilde)
         output_array_non_reduced[site_id] = error_i
 
-        mol_obj.update_variables_embedded_block(v_tilde, h_tilde, site_group, mu_imp[one_site_id],
-                                                mol_obj.embedded_mol_dict[block_size], u_0_dimer)
+        for index1, one_site_id in enumerate(site_id):
+            eq_block = None
+            for t1 in range(len(mol_obj.equiv_atoms_in_block)):
+                if one_site_id in mol_obj.equiv_atoms_in_block[t1]:
+                    eq_block = mol_obj.equiv_atoms_in_block[t1]
+                    break
+            output_array_non_reduced[eq_block] = error_i[index1]
+        # mol_obj.update_variables_embedded_block(v_tilde, h_tilde, site_group, mu_imp[one_site_id],
+        #                                         mol_obj.embedded_mol_dict[block_size], u_0_dimer)
         first_iteration = False
     if np.any(np.isnan(output_array_non_reduced)):
         raise Exception("Didn't cover all groups")
@@ -718,10 +725,8 @@ def cost_function_whole_block(v_hxc_approximation: np.array, mol_obj: Molecule) 
             # now in output_array_non_reduced we have many nan_values because we don't want to calculate for every
             # site but just for one in equivalent sites. Sometimes it still happens that we have more than
             # 1 calculation. In this case we want to have same value
-            values_from_same_group = output_array_non_reduced[group_site_tuple]
-            values_from_same_group = values_from_same_group[not np.isnan(values_from_same_group)]
-            if max(values_from_same_group) - min(values_from_same_group) < 2e-2:
-                raise Exception("Equivalent sites got different densities!")
+            values_from_same_group = output_array_non_reduced[list(group_site_tuple)]
+            values_from_same_group = values_from_same_group[np.logical_not(np.isnan(values_from_same_group))]
             output_array[group_id - 1] = np.mean(values_from_same_group)
     rms = np.sqrt(np.mean(np.square(output_array)))
     print(f"Block: for input {''.join(['{num:{dec}}'.format(num=cell, dec='+10.2e') for cell in mol_obj.v_hxc])}"
