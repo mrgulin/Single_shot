@@ -19,6 +19,7 @@ COMPENSATION_5_FACTOR = 1
 COMPENSATION_5_FACTOR2 = 0.5
 ITERATION_NUM = 0
 
+ROOT_LPFET_SOLVER_MAX_ITER = 100
 
 def change_indices(array_inp: np.array, site_id: typing.Union[int, typing.List[int]],
                    to_index: typing.Union[int, typing.List[int], None] = None):
@@ -255,11 +256,12 @@ class Molecule:
             raise Exception('Wrong length of the starting approximation')
         if self.block_hh:
             model = scipy.optimize.root(cost_function_whole_block, starting_approximation,
-                                        args=(self,), options={'fatol': 2e-3}, method='df-sane')
+                                        args=(self,), options={'fatol': 2e-3, "maxfev": ROOT_LPFET_SOLVER_MAX_ITER},
+                                        method='df-sane')
         else:
-            # starting_approximation *= 0
             model = scipy.optimize.root(cost_function_whole, starting_approximation,
-                                        args=(self,), options={'fatol': 2e-3}, method='df-sane')
+                                        args=(self,), options={'fatol': 2e-3, "maxfev": ROOT_LPFET_SOLVER_MAX_ITER},
+                                        method='df-sane')
         if not model.success or np.sum(np.square(model.fun)) > 0.01:
             print("Didn't converge :c ")
             return False
