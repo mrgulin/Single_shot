@@ -114,3 +114,23 @@ def generate_ring4(i, n_sites, U_param):
     nodes_dict[1]['v'] = i
     return nodes_dict, edges_dict
 
+
+def generate_ring5(i, n_sites, U_param):
+    """
+    Something similar to cyclopentanol. i parameter is on substituent
+    :param i:
+    :param n_sites:
+    :param U_param:
+    :return:
+    """
+    nodes_dict = dict()
+    edges_dict = dict()
+    for j in range(n_sites):
+        nodes_dict[j] = {'v': 0, 'U': U_param}
+        if j != n_sites - 1:
+            edges_dict[(j, j + 1)] = 1
+        else:
+            edges_dict[(1, j)] = 1
+    nodes_dict[0]['v'] = i
+    return nodes_dict, edges_dict
+
