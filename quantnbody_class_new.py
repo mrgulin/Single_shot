@@ -211,7 +211,7 @@ class HamiltonianV2(qnb.Hamiltonian):
         occupations = self.one_rdm.diagonal() / 2
         model = scipy.optimize.root(cost_function_v_hxc, starting_approximation,
                                     args=(occupations, self.h, self.n_electron),
-                                    options={'fatol': 1e-2}, method='df-sane')
+                                    options={'fatol': 1e-5}, method='df-sane')
         if not model.success or np.sum(np.square(model.fun)) > solution_classification_tolerance:
             return False
         energy_fci = self.eig_values[0]
