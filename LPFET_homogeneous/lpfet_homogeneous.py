@@ -6,8 +6,8 @@ from datetime import datetime
 import sys
 
 sys.path.extend(['/mnt/c/Users/tinc9/Documents/CNRS-offline/', '../'])
-import Quant_NBody  # Folder Quant_NBody has to be in the sys.path or installed as package.
-import Quant_NBody.class_Quant_NBody as class_Quant_NBody
+import quantnbody as qnb  # Folder qnb has to be in the sys.path or installed as package.
+import quantnbody_class_new as class_qnb
 import essentials
 
 COMPENSATION_1_RATIO = 0.75  # for the Molecule.update_v_hxc
@@ -18,7 +18,7 @@ def casci_dimer(gamma, h, u, v_imp, embedded_mol):
     # Density in range [0, 2]
     if np.sum(gamma) == 0:
         return 0, 0
-    P, v = Quant_NBody.householder_transformation(gamma)
+    P, v = qnb.tools.householder_transformation(gamma)
     h_tilde = P @ h @ P
     h_tilde_dimer = h_tilde[:2, :2]
     u_0_dimer = np.zeros((2, 2, 2, 2), dtype=np.float64)
@@ -26,12 +26,12 @@ def casci_dimer(gamma, h, u, v_imp, embedded_mol):
     h_tilde_dimer[0, 0] += v_imp
     embedded_mol.build_hamiltonian_fermi_hubbard(h_tilde_dimer, u_0_dimer)
     embedded_mol.diagonalize_hamiltonian()
-    density_dimer = Quant_NBody.build_1rdm_alpha(embedded_mol.WFT_0, embedded_mol.a_dagger_a)
+    density_dimer = qnb.tools.build_1rdm_alpha(embedded_mol.WFT_0, embedded_mol.a_dagger_a)
     density = density_dimer[0, 0] * 2
     # print("--------\ndensity")
     # single_shot.print_matrix(density_dimer)
-    # print(embedded_mol.ei_val)
-    energy = embedded_mol.ei_val[0]
+    # print(embedded_mol.eig_values)
+    energy = embedded_mol.eig_values[0]
     return density, energy
 
 
@@ -66,9 +66,9 @@ class Molecule:
         self.epsilon_s = np.array((), dtype=np.float64)  # Kohn-Sham energies
         self.n_ks = np.array((), dtype=np.float64)  # Densities of KS sysyem
 
-        # Quant_NBody objects
-        # self.whole_mol = class_qnb.QuantNBody(self.Ns, self.Ne)
-        self.embedded_mol = class_Quant_NBody.QuantNBody(2, 2)
+        # qnb objects
+        # self.whole_mol = class_qnb.HamiltonianV2(self.Ns, self.Ne)
+        self.embedded_mol = class_qnb.HamiltonianV2(2, 2)
         self.embedded_mol.build_operator_a_dagger_a()
 
         self.alpha = np.inf
@@ -136,7 +136,6 @@ class Molecule:
         print(f'\t{self.Ne:6.2f}{self.Ne_ceil:5d}, {self.Ne_floor:5d}{self.v_hxc_ceil:6.2f}{self.v_hxc_floor:6.2f}',
               end='')
 
-
     def pre_casci(self):
         density_floor, energy_floor = casci_dimer(self.y_floor, self.h_ks, self.u, -self.v_hxc_floor,
                                                   self.embedded_mol)
@@ -151,7 +150,6 @@ class Molecule:
                 self.alpha = alpha
         print(f'{alpha:6.2f}{self.alpha:6.2f}', end='')
 
-
     def CASCI(self):
 
         density_floor, energy_floor = casci_dimer(self.y_floor, self.h_ks, self.u, -self.v_hxc_floor,
@@ -164,6 +162,7 @@ class Molecule:
         # alpha_new = (n_e_new - self.Ne_floor) / (self.Ne_ceil - self.Ne_floor)
         # print("new alpha is: ", alpha_new)
         # self.alpha = alpha_new
+
 
 def calculate_from_v_ext(regime=4):
     regime = 4
@@ -317,5 +316,7 @@ def calculate_from_v_ext(regime=4):
     ax.grid(color='#dedede', linestyle='-', linewidth=0.5)
     plt.savefig(f'results/delta-{regime}_iter-num{comment}.png', dpi=300)
     plt.show()
+
+
 if __name__ == "__main__":
-    pass
+    calculate_from_v_ext(regime=4)
