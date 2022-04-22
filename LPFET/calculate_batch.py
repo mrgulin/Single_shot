@@ -67,6 +67,7 @@ def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecul
     with open(f"{folder_name}systems.txt", "w") as my_file:
         my_file.write("")
     x_label = ""
+    x_true = []
     for i in x:
         if constant_var == "i":
             u_param = i
@@ -130,13 +131,14 @@ def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecul
         old_v_hxc = mol1.v_hxc.copy()
         time_list.append([(time2-time1).total_seconds(), (time3-time2).total_seconds(), (time4-time3).total_seconds(),
                           (time5-time4).total_seconds()])
+        x_true.append(i)
     time_before_graphs = datetime.now()
     if len(y) == 0:
         conn = open(folder_name + 'skipped.txt', 'w')
         conn.write(' ')
         conn.close()
         return np.array(time_list)
-    calculate_graphs(folder_name, x, y, y_ref, y_simple, energy, energy_ref, v_hxc_progression_list,
+    calculate_graphs(folder_name, x_true, y, y_ref, y_simple, energy, energy_ref, v_hxc_progression_list,
                      correction_dict_list, energy_per_site, energy_ref_per_site, v_hxc_ref_progress, x_label)
     print(f"time spent for making graphs: {(datetime.now()-time_before_graphs).total_seconds()}")
     return np.array(time_list)
