@@ -91,7 +91,14 @@ def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecul
             starting_approximation_c_hxc = None
         time1 = datetime.now()
         # mol1.self_consistent_loop(num_iter=50, tolerance=1E-6, oscillation_compensation=[5, 1], v_hxc_0=0)
-        mol1.find_solution_as_root(starting_approximation_c_hxc)
+        try:
+            mol1.find_solution_as_root(starting_approximation_c_hxc)
+        except lpfet.errors.DegeneratedStatesError as e:
+            print('Degenerated energy levels --> skipping this system.\n', e, '--end--\n')
+            continue
+        except lpfet.errors.HouseholderTransformationError as e:
+            print('Unable to calculate Householder transformation --> skipping this system.\n', e, '--end--\n')
+            continue
         time2 = datetime.now()
         # mol1.optimize_solution(5, 0.2)
         mol1.calculate_energy(False)

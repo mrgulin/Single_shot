@@ -291,7 +291,7 @@ class Molecule:
             e_homo = self.epsilon_s[0]
         e_lumo = self.epsilon_s[self.Ne // 2]
         if np.isclose(e_lumo, e_homo):
-            print(f"Problem: It looks like there are degenerated energy levels. {self.Ne}, {self.epsilon_s}")
+            raise errors.DegeneratedStatesError(self.Ne, self.epsilon_s)
         self.n_ks = np.copy(self.y_a.diagonal())
 
     def casci(self, oscillation_compensation=0, v_hxc_0=None):
@@ -643,6 +643,8 @@ def cost_function_whole(v_hxc_approximation: np.array, mol_obj: Molecule) -> np.
         site_id = group_tuple[0]
         y_a_correct_imp = change_indices(mol_obj.y_a, site_id)
         p, v = qnb.tools.householder_transformation(y_a_correct_imp)
+        if np.any(np.isnan(p)):
+            raise errors.HouseholderTransformationError(y_a_correct_imp)
         h_tilde = p @ (change_indices(mol_obj.t, site_id) + np.diag(change_indices(mol_obj.v_s, site_id))) @ p
         h_tilde_dimer = h_tilde[:2, :2]
         v_tilde = mol_obj.transform_v_term(p, site_id)
