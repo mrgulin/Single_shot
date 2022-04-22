@@ -33,3 +33,20 @@ class HouseholderTransformationError(Exception):
             self.message = custom_message
         super().__init__(self.message)
 
+
+class EmptyFullOrbitalError(Exception):
+    """Exception raised when KS density is either 0 or 2.
+
+    Attributes:
+        n_ks -- vector of densities
+        value -- wrong value
+        message -- custom message to overwrite error message
+    """
+
+    def __init__(self, n_ks, value, custom_message=''):
+        if not custom_message:
+            self.message = f"Error: KS density son some site is {value} which is too close {roud(value[0]):.0f}" \
+                           f" (densities: {n_ks})\n"
+        else:
+            self.message = custom_message
+        super().__init__(self.message)

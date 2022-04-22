@@ -99,6 +99,9 @@ def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecul
         except lpfet.errors.HouseholderTransformationError as e:
             print('Unable to calculate Householder transformation --> skipping this system.\n', e, '--end--\n')
             continue
+        except lpfet.errors.EmptyFullOrbitalError as e:
+            print('Created KS densities were either full or empty --> skipping this system.\n', e, '--end--\n')
+            continue
         time2 = datetime.now()
         # mol1.optimize_solution(5, 0.2)
         mol1.calculate_energy(False)

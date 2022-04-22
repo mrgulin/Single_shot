@@ -274,7 +274,7 @@ class Molecule:
         print(model)
         return v_hxc
 
-    def calculate_ks(self):
+    def calculate_ks(self, prevent_extreme_values=False):
         self.v_s = self.v_hxc + self.v_ext
         self.h_ks = self.t + np.diag(self.v_s)
         try:
@@ -295,6 +295,17 @@ class Molecule:
         if np.isclose(e_lumo, e_homo):
             raise errors.DegeneratedStatesError(self.Ne, self.epsilon_s)
         self.n_ks = np.copy(self.y_a.diagonal())
+
+        if prevent_extreme_values:
+            min_distance_from_extremes = 1e-3
+            # In LPFET we don't want to have either fully occupied impurities or fully empty site because then non of
+            # the chemical impurity potential will be able to match density from KS-DFT. for fully occupied orbital and
+            # mu_imp == 50 we get occupation 1.99984983. 1e-3 is around 30% higher so this should solve the problem
+            if np.any(np.isclose(self.n_ks, 0, atol=1e-3)):
+                raise errors.EmptyFullOrbitalError(self.n_ks, self.n_ks[np.isclose(self.n_ks, 0, atol=1e-3)])
+
+            if np.any(np.isclose(self.n_ks, 2, atol=1e-3)):
+                raise errors.EmptyFullOrbitalError(self.n_ks, self.n_ks[np.isclose(self.n_ks, 2, atol=1e-3)])
 
     def casci(self, oscillation_compensation=0, v_hxc_0=None):
         mu_imp_first = np.nan
@@ -634,7 +645,7 @@ def cost_function_whole(v_hxc_approximation: np.array, mol_obj: Molecule) -> np.
             for site_id_i in group_site_tuple:
                 mol_obj.v_hxc[site_id_i] = v_hxc_approximation[group_id - 1]
     mol_obj.v_hxc_progress.append(mol_obj.v_hxc)
-    mol_obj.calculate_ks()
+    mol_obj.calculate_ks(True)
     mol_obj.density_progress.append(mol_obj.n_ks)
     output_array = np.zeros(len(eq_atom) - 1, float)
     mu_imp_first = np.nan
