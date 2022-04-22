@@ -42,7 +42,7 @@ def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecul
             os.mkdir(one_path)
 
     if not force:
-        if os.path.isfile(folder_name + "/Energy_errors_per_site.svg"):
+        if os.path.isfile(folder_name + "/Energy_errors_per_site.svg") or os.path.isfile(folder_name + 'skipped.txt'):
             print("THERE IS ALREADY DATA. FUNCTION WILL EXIT.")
             return 0
 
@@ -128,6 +128,11 @@ def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecul
         time_list.append([(time2-time1).total_seconds(), (time3-time2).total_seconds(), (time4-time3).total_seconds(),
                           (time5-time4).total_seconds()])
     time_before_graphs = datetime.now()
+    if len(y) == 0:
+        conn = open(folder_name + 'skipped.txt', 'w')
+        conn.write(' ')
+        conn.close()
+        return np.array(time_list)
     calculate_graphs(folder_name, x, y, y_ref, y_simple, energy, energy_ref, v_hxc_progression_list,
                      correction_dict_list, energy_per_site, energy_ref_per_site, v_hxc_ref_progress, x_label)
     print(f"time spent for making graphs: {(datetime.now()-time_before_graphs).total_seconds()}")
