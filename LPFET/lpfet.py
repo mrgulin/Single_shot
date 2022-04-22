@@ -1,5 +1,4 @@
-import essentials
-import lpfet
+from LPFET import essentials
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy.optimize
@@ -13,6 +12,7 @@ import typing
 import quantnbody as qnb  # Folder Quant_NBody has to be in the sys.path or installed as package.
 import quantnbody_class_new as class_qnb
 from essentials import generate_1rdm
+from LPFET import errors
 
 COMPENSATION_1_RATIO = 0.5  # for the Molecule.update_v_hxc
 COMPENSATION_MAX_ITER_HISTORY = 4

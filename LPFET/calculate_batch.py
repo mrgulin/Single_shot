@@ -2,10 +2,10 @@ import sys
 import os
 import typing
 from datetime import datetime
-from . import lpfet
+from LPFET import lpfet
 import numpy as np
 import matplotlib.pyplot as plt
-from . import essentials
+from LPFET import essentials
 import matplotlib as mpl
 
 
