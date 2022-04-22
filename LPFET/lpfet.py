@@ -21,6 +21,8 @@ COMPENSATION_5_FACTOR2 = 0.5
 ITERATION_NUM = 0
 
 ROOT_LPFET_SOLVER_MAX_ITER = 100
+np.seterr(all='raise')
+np.errstate(all='raise')
 
 def change_indices(array_inp: np.array, site_id: typing.Union[int, typing.List[int]],
                    to_index: typing.Union[int, typing.List[int], None] = None):
