@@ -715,7 +715,8 @@ def cost_function_whole_block(v_hxc_approximation: np.array, mol_obj: Molecule) 
         h_tilde_dimer = h_tilde[:block_size * 2, :block_size * 2]
         v_tilde = mol_obj.transform_v_term(p, site_id)
         u_0_dimer = np.zeros((block_size * 2, block_size * 2, block_size * 2, block_size * 2), dtype=np.float64)
-        u_0_dimer[site_id, site_id, site_id, site_id] += mol_obj.u[site_id]
+        range1 = np.arange(len(site_id))
+        u_0_dimer[range1, range1, range1, range1] += mol_obj.u[site_id]
         if first_iteration:
             if 0 not in site_id:
                 raise Exception("Unexpected behaviour: First impurity site should have been the 0th site")
