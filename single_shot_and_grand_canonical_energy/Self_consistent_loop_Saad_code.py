@@ -1,7 +1,5 @@
 import numpy as np
 import single_shot as ss
-import Quant_NBody_feb_2022
-import LPFET.class_Quant_NBody_feb_2022
 import single_shot
 
 embedded_mol = LPFET.class_Quant_NBody.QuantNBody(2, 2)
