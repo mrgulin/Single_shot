@@ -737,11 +737,7 @@ def cost_function_whole_block(v_hxc_approximation: np.array, mol_obj: Molecule) 
         output_array_non_reduced[site_id] = error_i
 
         for index1, one_site_id in enumerate(site_id):
-            eq_block = None
-            for t1 in range(len(mol_obj.equiv_atoms_in_block)):
-                if one_site_id in mol_obj.equiv_atoms_in_block[t1]:
-                    eq_block = mol_obj.equiv_atoms_in_block[t1]
-                    break
+            eq_block = find_equivalent_block(mol_obj, one_site_id)
             output_array_non_reduced[eq_block] = error_i[index1]
         # mol_obj.update_variables_embedded_block(v_tilde, h_tilde, site_group, mu_imp[one_site_id],
         #                                         mol_obj.embedded_mol_dict[block_size], u_0_dimer)
@@ -761,6 +757,17 @@ def cost_function_whole_block(v_hxc_approximation: np.array, mol_obj: Molecule) 
           f" error is {''.join(['{num:{dec}}'.format(num=cell, dec='+10.2e') for cell in output_array])} "
           f" (RMS = {rms})")
     return output_array
+
+
+def find_equivalent_block(mol_obj: Molecule, one_site_id: int):
+    eq_block = None
+    for t1 in range(len(mol_obj.equiv_atoms_in_block)):
+        if one_site_id in mol_obj.equiv_atoms_in_block[t1]:
+            eq_block = mol_obj.equiv_atoms_in_block[t1]
+            break
+    if eq_block is None:
+        raise Exception(f"Site not found in the equiv_atoms_in_block ({one_site_id} in {mol_obj.equiv_atoms_in_block})")
+    return eq_block
 
 
 def cost_function_casci_root(mu_imp, embedded_mol, h_tilde_dimer, u_0_dimer, desired_density, v_tilde):
