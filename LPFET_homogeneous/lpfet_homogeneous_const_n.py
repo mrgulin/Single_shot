@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import scipy.optimize as sc_opt
 
 import sys
+
 sys.path.extend(['/mnt/c/Users/tinc9/Documents/CNRS-offline/', '../'])
 import LPFET_homogeneous.lpfet_homogeneous
 
@@ -49,13 +50,12 @@ class MoleculeConstN(LPFET_homogeneous.lpfet_homogeneous.Molecule):
 
     def set_ext_pot(self):
         opt_v_imp_obj = sc_opt.minimize(optimization_function, np.array([0]),
-                        args=(self, ),
-                        method='BFGS', options={'eps': 1e-3})
+                                        args=(self,),
+                                        method='BFGS', options={'eps': 1e-3})
         error = opt_v_imp_obj['fun']
         ext_pot = opt_v_imp_obj['x'][0]
         print(f'{self.Ne:4.1f}: {ext_pot:6.2f} +- {error:8.4f}')
         return ext_pot
-
 
 
 def optimization_function(ext_pot, mol_obj: MoleculeConstN):
@@ -74,11 +74,12 @@ def optimization_function(ext_pot, mol_obj: MoleculeConstN):
           f'{abs(n_e_new - mol_obj.Ne):6.3f}')
     return abs(n_e_new - mol_obj.Ne)
 
+
 if __name__ == '__main__':
     obj = MoleculeConstN(6, 5, 1, -2, 2)
     result_list = []
     obj.precalculate_rdms()
-    for electron_number in np.linspace(0.1, 11.9, 120-1):
+    for electron_number in np.linspace(0.1, 11.9, 120 - 1):
         obj.set_n(electron_number)
         mu_ext = obj.set_ext_pot()
         result_list.append([electron_number, mu_ext])
