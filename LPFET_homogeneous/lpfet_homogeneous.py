@@ -317,6 +317,34 @@ def calculate_from_v_ext(regime=4):
     plt.savefig(f'results/delta-{regime}_iter-num{comment}.png', dpi=300)
     plt.show()
 
+def calculate_reference_fci_values(n_sites=6):
+    t = essentials.generate_huckel_hamiltonian(n_sites, 2, 1)
+    u_param = 5
+    u_4d = np.zeros((n_sites, n_sites, n_sites, n_sites))
+    u_4d[range(n_sites), range(n_sites), range(n_sites), range(n_sites)] = u_param
+    u_4d_empty = np.zeros((n_sites, n_sites, n_sites, n_sites))
+    result_list = []
+    for n_electron in range(2, 2 * n_sites - 1, 2):
+        mol_obj = class_qnb.HamiltonianV2(n_sites, n_electron)
+        mol_obj.build_operator_a_dagger_a()
+        mol_obj.build_hamiltonian_fermi_hubbard(t, u_4d)
+        mol_obj.diagonalize_hamiltonian()
+        v_hxc = mol_obj.calculate_v_hxc(np.zeros(n_sites))
+        if not np.allclose(v_hxc, v_hxc[0]):
+            raise Exception(f"Not all potentials are same: {v_hxc}")
+
+        ei_val, ei_vec = np.linalg.eigh(t + np.diag(v_hxc))
+        ks_energy = ei_val[n_electron // 2 - 1]
+
+        mol_obj.build_hamiltonian_fermi_hubbard(t + np.diag(v_hxc), u_4d_empty)
+        mol_obj.diagonalize_hamiltonian()
+        ks_energy2 = mol_obj.eig_values[0]
+        result_list.append([n_electron, v_hxc[0], ks_energy, mol_obj.eig_values[0], ks_energy2])
+    print(result_list)
+    return result_list
+
+
 
 if __name__ == "__main__":
-    calculate_from_v_ext(regime=4)
+    # calculate_from_v_ext(regime=4)
+    l1 = calculate_reference_fci_values()
