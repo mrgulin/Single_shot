@@ -739,6 +739,22 @@ def cost_function_whole_block(v_hxc_approximation: np.array, mol_obj: Molecule) 
         for index1, one_site_id in enumerate(site_id):
             eq_block = find_equivalent_block(mol_obj, one_site_id)
             output_array_non_reduced[eq_block] = error_i[index1]
+
+        # energy contributions
+        one_rdm_c = mol_obj.embedded_mol_dict[block_size].one_rdm
+        two_rdm_c = mol_obj.embedded_mol_dict[block_size].build_2rdm_fh_on_site_repulsion(u_0_dimer)
+        for index, site in enumerate(site_id):
+            t_tilde_i = t_correct_indices.copy()
+            t_tilde_i[[i for i in range(mol_obj.Ns) if i != index]] = 0
+            t_tilde_i = (p @ t_tilde_i @ p)[:block_size * 2, :block_size * 2]
+
+            # essentials.print_matrix((t_tilde_i * one_rdm_c))
+            eq_block = find_equivalent_block(mol_obj, site)
+            mol_obj.kinetic_contributions[eq_block] = np.sum(t_tilde_i * one_rdm_c)
+            mol_obj.onsite_repulsion[eq_block] = two_rdm_c[index, index, index, index] * u_0_dimer[
+                index, index, index, index]
+
+
         # mol_obj.update_variables_embedded_block(v_tilde, h_tilde, site_group, mu_imp[one_site_id],
         #                                         mol_obj.embedded_mol_dict[block_size], u_0_dimer)
         first_iteration = False
