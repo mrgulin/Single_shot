@@ -24,6 +24,7 @@ ROOT_LPFET_SOLVER_MAX_ITER = 100
 np.seterr(all='raise')
 np.errstate(all='raise')
 
+
 def change_indices(array_inp: np.array, site_id: typing.Union[int, typing.List[int]],
                    to_index: typing.Union[int, typing.List[int], None] = None):
     array = np.copy(array_inp)
@@ -597,7 +598,7 @@ class Molecule:
             v_term_one = self.transform_v_term(p, site_group, one_site)
             v_term_repulsion_i = np.sum(embedded_mol.build_2rdm_fh_dipolar_interactions(v_term_one) * v_term_one)
             on_site_repulsion_i = two_rdm_on_site[one_site_id, one_site_id, one_site_id, one_site_id] * \
-                u_tilde[one_site_id, one_site_id, one_site_id, one_site_id]
+                                  u_tilde[one_site_id, one_site_id, one_site_id, one_site_id]
             for every_site_id in equivalent_atoms:
                 # Kinetic contribution???
                 self.kinetic_contributions[every_site_id] = 2 * h_tilde[1, 0] * embedded_mol.one_rdm[1, 0]
@@ -626,7 +627,7 @@ class Molecule:
                 v_term_correct_indices = v_term[:, mask][mask, :]
             v_tilde = np.einsum('ip, iq, jr, js, ij -> pqrs', p, p, p, p,
                                 v_term_correct_indices)[:2 * impurity_size, :2 * impurity_size, :2 * impurity_size,
-                                                        :2 * impurity_size]
+                      :2 * impurity_size]
         else:
             v_tilde = None
         return v_tilde
@@ -709,7 +710,8 @@ def cost_function_whole_block(v_hxc_approximation: np.array, mol_obj: Molecule) 
         block_size = len(site_id)
         y_a_correct_imp = change_indices(mol_obj.y_a, site_id)
         p, moore_penrose_inv = qnb.tools.block_householder_transformation(y_a_correct_imp, block_size)
-        h_tilde = p @ (change_indices(mol_obj.t, site_id) + np.diag(change_indices(mol_obj.v_s, site_id))) @ p
+        t_correct_indices = change_indices(mol_obj.t, site_id)
+        h_tilde = p @ (t_correct_indices + np.diag(change_indices(mol_obj.v_s, site_id))) @ p
         h_tilde_dimer = h_tilde[:block_size * 2, :block_size * 2]
         v_tilde = mol_obj.transform_v_term(p, site_id)
         u_0_dimer = np.zeros((block_size * 2, block_size * 2, block_size * 2, block_size * 2), dtype=np.float64)
