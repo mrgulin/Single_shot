@@ -16,9 +16,9 @@ from LPFET import errors
 import logging
 
 # logging.basicConfig(filename='optimizer-comparison.log', level=logging.DEBUG)
-
-general_handler = logging.FileHandler('general.log', mode='w')
-general_handler.setFormatter(logging.Formatter('%(levelname)s %(lineno)s %(created)s: %(message)s'))
+formatter = logging.Formatter('%(levelname)s %(lineno)s %(asctime)s: %(message)s', "%Y-%m-%d %H:%M:%S")
+general_handler = logging.FileHandler('general_lpfet.log', mode='w')
+general_handler.setFormatter(formatter)
 
 stream_handler = logging.StreamHandler()
 
@@ -138,7 +138,7 @@ class Molecule:
         # self.whole_mol = class_qnb.QuantNBody(self.Ns, self.Ne)
         self.embedded_mol = class_qnb.HamiltonianV2(2, 2)
         self.embedded_mol_dict = dict()
-        self.embedded_mol.build_operator_a_dagger_a()
+        self.embedded_mol.build_operator_a_dagger_a(silent=True)
 
         self.density_progress = []  # This object is used for gathering changes in the density over iterations
         self.v_hxc_progress = []
@@ -176,7 +176,7 @@ class Molecule:
         if not np.allclose(self.t, self.t.T):
             raise Exception("t matrix should have been symmetric")
         equiv_atom_group_list = cangen(t, np.array(u) * 100 + np.array(v_ext))
-        print(equiv_atom_group_list)
+        general_logger.info(equiv_atom_group_list)
         self.equiv_atom_groups = []
         for index, item in enumerate(equiv_atom_group_list):
             self.equiv_atom_groups.append(tuple(item))
@@ -189,7 +189,7 @@ class Molecule:
     def prepare_for_block(self, blocks: typing.List[typing.List[int]]):
         n_blocks = len(blocks)
         if 0 not in blocks[0]:
-            print('site 0 must be in the first block')
+            general_logger.info('site 0 must be in the first block')
             return 0
         self.blocks = blocks
         normalized_blocks = [[int(self.equiv_atom_groups_reverse[j]) for j in i] for i in blocks]
@@ -206,7 +206,7 @@ class Molecule:
                     equiv_block_list[-1].append(j)
                     ignored.append(j)
         self.equiv_block_groups = equiv_block_list
-        print(self.equiv_block_groups)
+        general_logger.info(self.equiv_block_groups)
         ignore = []
         equiv_atoms_in_block = []
         for i in range(self.Ns):
@@ -227,13 +227,13 @@ class Molecule:
                     equiv_atoms_in_block[-1].append(j)
                     ignore.append(j)
             ignore.append(i)
-        print(equiv_atoms_in_block)
+        general_logger.info(equiv_atoms_in_block)
         self.equiv_atoms_in_block = equiv_atoms_in_block
 
         for block_i in blocks:
             block_size = len(block_i)
             self.embedded_mol_dict[block_size] = class_qnb.HamiltonianV2(block_size * 2, block_size * 2)
-            self.embedded_mol_dict[block_size].build_operator_a_dagger_a()
+            self.embedded_mol_dict[block_size].build_operator_a_dagger_a(silent=True)
         self.block_hh = True
 
     def self_consistent_loop(self, num_iter=10, tolerance=0.0001,
@@ -247,7 +247,7 @@ class Molecule:
             self.density_progress.append(self.n_ks.copy())
             self.casci(oscillation_compensation, v_hxc_0)
             self.v_hxc_progress.append(self.v_hxc.copy())
-            print(f"\nLoop {i}", end=', ')
+            general_logger.info(f"\nLoop {i}", end=', ')
             mean_square_difference_density = np.average(np.square(self.n_ks - old_density))
             max_difference_v_hxc = np.max(np.abs(self.v_hxc - old_v_hxc))
 
@@ -284,11 +284,11 @@ class Molecule:
                                         args=(self,), options={'fatol': 2e-3, "maxfev": ROOT_LPFET_SOLVER_MAX_ITER},
                                         method='df-sane')
         if not model.success or np.sum(np.square(model.fun)) > 0.01:
-            print("Didn't converge :c ")
+            general_logger.info("Didn't converge :c ")
             return False
         v_hxc = model.x
-        print(model.fun)
-        print(model)
+        general_logger.info(model.fun)
+        general_logger.info(model)
         return v_hxc
 
     def calculate_ks(self, prevent_extreme_values=False):
@@ -297,10 +297,10 @@ class Molecule:
         try:
             self.epsilon_s, self.wf_ks = np.linalg.eigh(self.h_ks, 'U')
         except:
-            print(f'!!!!{self.v_ext}, {self.Ne}, {self.u}')
-            print(f'!!!!{self.v_ext}, {self.Ne}, {self.u}')
-            print(f'!!!!{self.v_ext}, {self.Ne}, {self.u}')
-            print(f'!!!!{self.v_ext}, {self.Ne}, {self.u}')
+            general_logger.info(f'!!!!{self.v_ext}, {self.Ne}, {self.u}')
+            general_logger.info(f'!!!!{self.v_ext}, {self.Ne}, {self.u}')
+            general_logger.info(f'!!!!{self.v_ext}, {self.Ne}, {self.u}')
+            general_logger.info(f'!!!!{self.v_ext}, {self.Ne}, {self.u}')
 
             raise np.linalg.LinAlgError(f"Eigenvalues did not converge\n{essentials.print_matrix(self.h_ks)}")
         self.y_a = generate_1rdm(self.Ns, self.Ne, self.wf_ks)
@@ -384,7 +384,7 @@ class Molecule:
             if 5 in oscillation_compensation:
                 new_mu_imp = mu_minus_1
                 new_mu_imp += np.tanh((mu_imp - mu_minus_1)) / COMPENSATION_5_FACTOR2
-                print(f'(({site_group}): {mu_minus_1:.2f} {new_mu_imp - mu_minus_1:.2f} {mu_imp - mu_minus_1:.2f})',
+                general_logger.info(f'(({site_group}): {mu_minus_1:.2f} {new_mu_imp - mu_minus_1:.2f} {mu_imp - mu_minus_1:.2f})',
                       end=', ')
                 mu_imp = new_mu_imp
         else:
@@ -411,7 +411,7 @@ class Molecule:
                 else:
                     self.compensation_ratio_dict[index] = max(self.compensation_ratio_dict[index] - 0.1, 1)
                 new_mu_imp += np.tanh((mu_imp - mu_minus_1)) / self.compensation_ratio_dict[index]
-                print(f'(({site_group}): {mu_minus_1:.2f} {new_mu_imp - mu_minus_1:.2f} {mu_imp - mu_minus_1:.2f},'
+                general_logger.info(f'(({site_group}): {mu_minus_1:.2f} {new_mu_imp - mu_minus_1:.2f} {mu_imp - mu_minus_1:.2f},'
                       f' {self.compensation_ratio_dict[index]:.1f})',
                       end=', ')
                 mu_imp = new_mu_imp
@@ -420,7 +420,7 @@ class Molecule:
                         abs(mu_minus_2 - mu_minus_1) * 0.75 < abs(mu_minus_1 - mu_imp):
                     # First statement means that potential correction turned direction and second means that it is large
                     new_mu_imp = mu_minus_1 + (mu_imp - mu_minus_1) * COMPENSATION_1_RATIO
-                    print(f'{mu_minus_2:.2f}->{mu_minus_1:.2f}->{new_mu_imp:.2f}!={mu_imp:.2f}', end=', ')
+                    general_logger.info(f'{mu_minus_2:.2f}->{mu_minus_1:.2f}->{new_mu_imp:.2f}!={mu_imp:.2f}', end=', ')
                     mu_imp = new_mu_imp
                     self.oscillation_correction_dict[(self.iteration_i, index)] = (
                         mu_minus_2, mu_minus_1, mu_imp, new_mu_imp)
@@ -430,7 +430,7 @@ class Molecule:
                         ((mu_counter - mu_same) > 0):
                     # First statement means that potential correction turned direction and second means that it is large
                     new_mu_imp = mu_minus_1 + (mu_imp - mu_minus_1) * COMPENSATION_1_RATIO
-                    print(f'{mu_minus_2:.2f}->{mu_minus_1:.2f}->{new_mu_imp:.2f}!={mu_imp:.2f}', end=', ')
+                    general_logger.info(f'{mu_minus_2:.2f}->{mu_minus_1:.2f}->{new_mu_imp:.2f}!={mu_imp:.2f}', end=', ')
                     mu_imp = new_mu_imp
                     self.oscillation_correction_dict[(self.iteration_i, index)] = (
                         mu_minus_2, mu_minus_1, mu_imp, new_mu_imp)
@@ -442,7 +442,7 @@ class Molecule:
                 factor1 = r2  # np.exp((r2 - 1) * 3)
                 predicted = reg.predict([x_data[-1]])[0]
                 new_mu_imp = factor1 * mu_imp + (1 - factor1) * predicted
-                print(f'{mu_minus_2:.2f}->{mu_minus_1:.2f}->{new_mu_imp:.2f}!={mu_imp:.2f} ({r2}, {factor1})', end=', ')
+                general_logger.info(f'{mu_minus_2:.2f}->{mu_minus_1:.2f}->{new_mu_imp:.2f}!={mu_imp:.2f} ({r2}, {factor1})', end=', ')
                 mu_imp = new_mu_imp
 
         for every_site_id in self.equiv_atom_groups[site_group]:
@@ -465,7 +465,7 @@ class Molecule:
                                      u_contribution, v_term_contribution)
         self.per_site_energy = per_site_array
         if not silent:
-            print(f'\n{"site":30s}{" ".join([f"{i:9d}" for i in range(self.Ns)])}{"total":>12s}\n{"Kinetic energy":30s}'
+            general_logger.info(f'\n{"site":30s}{" ".join([f"{i:9d}" for i in range(self.Ns)])}{"total":>12s}\n{"Kinetic energy":30s}'
                   f'{" ".join([f"{i:9.4f}" for i in self.kinetic_contributions])}{kinetic_contribution:12.7f}\n'
                   f'{"External potential energy":30s}{" ".join([f"{i:9.4f}" for i in per_site_array["v_ext"]])}'
                   f'{v_ext_contribution:12.7f}\n{"On-site repulsion":30s}'
@@ -473,7 +473,7 @@ class Molecule:
                   f'{"V-term repulsion":30s}{" ".join([f"{i:9.4f}" for i in self.v_term_repulsion])}'
                   f'{v_term_contribution:12.7f}\n'
                   f'{"Occupations":30s}{" ".join([f"{i:9.4f}" for i in self.n_ks])}{np.sum(self.n_ks) * 2:12.7f}')
-            print(f'{"_" * 20}\nTotal energy:{total_energy}')
+            general_logger.info(f'{"_" * 20}\nTotal energy:{total_energy}')
 
         return total_energy
 
@@ -522,8 +522,8 @@ class Molecule:
 
             return y_ab, mol_full, (total_energy, kinetic_contribution, v_ext_contribution,
                                     u_contribution, v_term_contribution), per_site_array
-        print("FCI densities (per spin):", densities)
-        print(f'FCI energy: {mol_full.eig_values[0]}')
+        general_logger.info("FCI densities (per spin):", densities)
+        general_logger.info(f'FCI energy: {mol_full.eig_values[0]}')
         return y_ab, mol_full, (total_energy, kinetic_contribution, v_ext_contribution,
                                 u_contribution, 0)
 
@@ -567,7 +567,7 @@ class Molecule:
         nx.draw_networkx_edge_labels(g, position, edge_labels)
         ax.set_xlim(*np.array(ax.get_xlim()) * 1.3)
         ax.set_ylim(*np.array(ax.get_ylim()) * 1.3)
-        print(f"results/{self.description}_molecule.png")
+        general_logger.info(f"results/{self.description}_molecule.png")
         fig.show()
         fig.savefig(f"results/{self.description}_molecule.svg")
 
@@ -700,7 +700,7 @@ def cost_function_whole(v_hxc_approximation: np.array, mol_obj: Molecule) -> np.
         mol_obj.update_variables_embedded(v_tilde, h_tilde, site_group, mu_imp, mol_obj.embedded_mol, u_0_dimer)
         first_iteration = False
     rms = np.sqrt(np.mean(np.square(output_array)))
-    print(f"for input {''.join(['{num:{dec}}'.format(num=cell, dec='+10.2e') for cell in mol_obj.v_hxc])} error is"
+    general_logger.info(f"for input {''.join(['{num:{dec}}'.format(num=cell, dec='+10.2e') for cell in mol_obj.v_hxc])} error is"
           f" {''.join(['{num:{dec}}'.format(num=cell, dec='+10.2e') for cell in output_array])} "
           f" (RMS = {rms})")
     return output_array
@@ -744,19 +744,19 @@ def cost_function_whole_block(v_hxc_approximation: np.array, mol_obj: Molecule) 
                                                   mol_obj.n_ks[site_id], v_tilde),
                                             options={'fatol': 1e-2, 'maxfev': 40}, method='df-sane')
             except FloatingPointError as e:
-                print(e)
+                general_logger.info(e)
                 model = scipy.optimize.OptimizeResult()
                 model.success = False
                 model.x = mol_obj.v_hxc[site_id]
 
             if not model.success or np.sum(np.square(model.fun)) > 0.01:
-                print("Didn't manage to converge with df-sane; trying with hybr root finder")
+                general_logger.info("Didn't manage to converge with df-sane; trying with hybr root finder")
                 # Second chance with another model
                 model = scipy.optimize.root(cost_function_casci_root, mol_obj.v_hxc[site_id],
                                             args=(mol_obj.embedded_mol_dict[block_size], h_tilde_dimer, u_0_dimer,
                                                   mol_obj.n_ks[site_id], v_tilde), method='hybr')
             if not model.success or np.sum(np.square(model.fun)) > 0.01:
-                print("Didn't converge :c ")
+                general_logger.info("Didn't converge :c ")
                 raise Exception(f'Inversion of a cluster did not succeed'
                                 f'\n{essentials.print_matrix(h_tilde_dimer, ret=True)}\n'
                                 f'Desired density: {mol_obj.n_ks[site_id]}')
@@ -802,7 +802,7 @@ def cost_function_whole_block(v_hxc_approximation: np.array, mol_obj: Molecule) 
             values_from_same_group = values_from_same_group[np.logical_not(np.isnan(values_from_same_group))]
             output_array[group_id - 1] = np.mean(values_from_same_group)
     rms = np.sqrt(np.mean(np.square(output_array)))
-    print(f"Block: for input {''.join(['{num:{dec}}'.format(num=cell, dec='+10.2e') for cell in mol_obj.v_hxc])}"
+    general_logger.info(f"Block: for input {''.join(['{num:{dec}}'.format(num=cell, dec='+10.2e') for cell in mol_obj.v_hxc])}"
           f" error is {''.join(['{num:{dec}}'.format(num=cell, dec='+10.2e') for cell in output_array])} "
           f" (RMS = {rms})")
     return output_array
@@ -891,7 +891,7 @@ def generate_from_graph(sites, connections):
 # plus_list = np.array(plus_list).T
 # minus_list = np.array(minus_list).T
 # essentials.print_matrix(plus_list)
-# print()
+# general_logger.info()
 # essentials.print_matrix(minus_list)
 
 if __name__ == "__main__":
