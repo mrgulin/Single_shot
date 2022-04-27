@@ -302,10 +302,10 @@ class Molecule:
             # In LPFET we don't want to have either fully occupied impurities or fully empty site because then non of
             # the chemical impurity potential will be able to match density from KS-DFT. for fully occupied orbital and
             # mu_imp == 50 we get occupation 1.99984983. 1e-3 is around 30% higher so this should solve the problem
-            if np.any(np.isclose(self.n_ks, 0, atol=1e-3)):
+            if np.any(np.isclose(self.n_ks, 0, atol=min_distance_from_extremes)):
                 raise errors.EmptyFullOrbitalError(self.n_ks, self.n_ks[np.isclose(self.n_ks, 0, atol=1e-3)])
 
-            if np.any(np.isclose(self.n_ks, 2, atol=1e-3)):
+            if np.any(np.isclose(self.n_ks, 2, atol=min_distance_from_extremes)):
                 raise errors.EmptyFullOrbitalError(self.n_ks, self.n_ks[np.isclose(self.n_ks, 2, atol=1e-3)])
 
     def casci(self, oscillation_compensation=0, v_hxc_0=None):
