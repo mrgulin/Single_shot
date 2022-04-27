@@ -10,7 +10,7 @@ import matplotlib as mpl
 
 
 def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecule_name, u_param=None, i_param=None,
-                   delta_x=None, max_value=None, r_param=None, force=True):
+                   delta_x=None, max_value=None, r_param=None, force=True, blocks=None):
     lpfet.COMPENSATION_5_FACTOR = 1
     lpfet.COMPENSATION_5_FACTOR2 = 1
     lpfet.COMPENSATION_1_RATIO = 0.25
@@ -88,6 +88,8 @@ def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecul
         with open(f"{folder_name}systems.txt", "a") as my_file:
             my_file.write(f"\n\n{repr(t)}\n{repr(v_ext)}\n{repr(u)}")
         mol1.add_parameters(u, t, v_ext, r_param)
+        if blocks is not None:
+            mol1.prepare_for_block(blocks)
         if len(mol1.equiv_atom_groups) - 1 != approx_len:
             starting_approximation_c_hxc = None
         time1 = datetime.now()
