@@ -710,6 +710,8 @@ def cost_function_whole_block(v_hxc_approximation: np.array, mol_obj: Molecule) 
         block_size = len(site_id)
         y_a_correct_imp = change_indices(mol_obj.y_a, site_id)
         p, moore_penrose_inv = qnb.tools.block_householder_transformation(y_a_correct_imp, block_size)
+        if np.any(np.isnan(p)):
+            raise errors.HouseholderTransformationError(y_a_correct_imp)
         t_correct_indices = change_indices(mol_obj.t, site_id)
         h_tilde = p @ (t_correct_indices + np.diag(change_indices(mol_obj.v_s, site_id))) @ p
         h_tilde_dimer = h_tilde[:block_size * 2, :block_size * 2]
@@ -720,13 +722,28 @@ def cost_function_whole_block(v_hxc_approximation: np.array, mol_obj: Molecule) 
         if first_iteration:
             if 0 not in site_id:
                 raise Exception("Unexpected behaviour: First impurity site should have been the 0th site")
-            model = scipy.optimize.root(cost_function_casci_root, mol_obj.v_hxc[site_id],
-                                        args=(mol_obj.embedded_mol_dict[block_size], h_tilde_dimer, u_0_dimer,
-                                              mol_obj.n_ks[site_id], v_tilde),
-                                        options={'fatol': 1e-2}, method='df-sane')
+            try:
+                model = scipy.optimize.root(cost_function_casci_root, mol_obj.v_hxc[site_id],
+                                            args=(mol_obj.embedded_mol_dict[block_size], h_tilde_dimer, u_0_dimer,
+                                                  mol_obj.n_ks[site_id], v_tilde),
+                                            options={'fatol': 1e-2, 'maxfev': 40}, method='df-sane')
+            except FloatingPointError as e:
+                print(e)
+                model = scipy.optimize.OptimizeResult()
+                model.success = False
+                model.x = mol_obj.v_hxc[site_id]
+
+            if not model.success or np.sum(np.square(model.fun)) > 0.01:
+                print("Didn't manage to converge with df-sane; trying with hybr root finder")
+                # Second chance with another model
+                model = scipy.optimize.root(cost_function_casci_root, mol_obj.v_hxc[site_id],
+                                            args=(mol_obj.embedded_mol_dict[block_size], h_tilde_dimer, u_0_dimer,
+                                                  mol_obj.n_ks[site_id], v_tilde), method='hybr')
             if not model.success or np.sum(np.square(model.fun)) > 0.01:
                 print("Didn't converge :c ")
-                raise Exception('Inversion of a cluster did not succeed')
+                raise Exception(f'Inversion of a cluster did not succeed'
+                                f'\n{essentials.print_matrix(h_tilde_dimer, ret=True)}\n'
+                                f'Desired density: {mol_obj.n_ks[site_id]}')
             zero_index_in_block = list(site_id).index(0)
             mu_imp = model.x
             mu_imp_first = mu_imp[zero_index_in_block]
