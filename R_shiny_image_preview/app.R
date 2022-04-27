@@ -95,11 +95,11 @@ server <- function(input, output) {
     
     output$imgplot <- renderImage({
       # When input$n is 1, filename is www/images/image1.jpeg
-      filename <- paste('C:/Users/tinc9/Documents/CNRS-offline/quantum_main_project/results/', vals$path_plot
+      filename <- paste('C:/Users/tinc9/Documents/CNRS-offline/internship_project/results/', vals$path_plot
                                           , sep='')
       
       if ((grepl('NA', filename, fixed = TRUE))|(is.null(vals$folder))){
-        filename <- 'C:/Users/tinc9/Documents/CNRS-offline/quantum_main_project/results/default.svg'
+        filename <- 'C:/Users/tinc9/Documents/CNRS-offline/internship_project/results/default.svg'
       }
       vals$filename <-  filename
       
