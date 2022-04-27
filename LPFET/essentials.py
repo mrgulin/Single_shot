@@ -49,6 +49,13 @@ def generate_huckel_hamiltonian(n_s, number_of_electrons=2, t=1):
 
 
 def generate_chain1(i, n_sites, U_param):
+    """
+    -2.5i --- -1.5i --- -0.5i --- ... --- (-2.5 + n_sites) * i
+    :param i: difference between levels
+    :param n_sites: Length of the chain
+    :param U_param: U
+    :return: classic output for generate functions
+    """
     nodes_dict = dict()
     edges_dict = dict()
     for j in range(n_sites):
@@ -59,6 +66,13 @@ def generate_chain1(i, n_sites, U_param):
 
 
 def generate_chain2(i, n_sites, U_param):
+    """
+    i --- 0 --- 0 --- ... --- 0
+    :param i: difference between levels
+    :param n_sites: Length of the chain
+    :param U_param: U
+    :return: classic output for generate functions
+    """
     nodes_dict = dict()
     edges_dict = dict()
     for j in range(n_sites):
@@ -70,6 +84,13 @@ def generate_chain2(i, n_sites, U_param):
 
 
 def generate_chain3(i, n_sites, U_param):
+    """
+    -i --- +i --- -i --- ... --- ((-1) ** n_sites) i
+    :param i: difference between levels
+    :param n_sites: Length of the chain
+    :param U_param: U
+    :return: classic output for generate functions
+    """
     nodes_dict = dict()
     edges_dict = dict()
     for j in range(n_sites):
@@ -102,6 +123,18 @@ def generate_complete1(i, n_sites, U_param):
     return nodes_dict, edges_dict
 
 def generate_ring4(i, n_sites, U_param):
+    """
+    Ring with ext potential:
+        i - i
+      /      ＼
+     0        0
+      ＼     /
+       0 - 0
+    :param i: external potential on site 0 and 1
+    :param n_sites: number of sites
+    :param U_param: U parameter
+    :return: usual return from generate ...
+    """
     nodes_dict = dict()
     edges_dict = dict()
     for j in range(n_sites):
@@ -118,10 +151,15 @@ def generate_ring4(i, n_sites, U_param):
 def generate_ring5(i, n_sites, U_param):
     """
     Something similar to cyclopentanol. i parameter is on substituent
-    :param i:
-    :param n_sites:
-    :param U_param:
-    :return:
+    0 - 0
+    |    ＼
+    |     0 - i
+    |    /
+    0 - 0
+    :param i: external potential on site 0 and 1
+    :param n_sites: number of sites
+    :param U_param: U parameter
+    :return: usual return from generate ...
     """
     nodes_dict = dict()
     edges_dict = dict()
