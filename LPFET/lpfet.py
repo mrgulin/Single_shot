@@ -13,6 +13,19 @@ import quantnbody as qnb  # Folder Quant_NBody has to be in the sys.path or inst
 import quantnbody_class_new as class_qnb
 from essentials import generate_1rdm
 from LPFET import errors
+import logging
+
+# logging.basicConfig(filename='optimizer-comparison.log', level=logging.DEBUG)
+
+general_handler = logging.FileHandler('general.log', mode='w')
+general_handler.setFormatter(logging.Formatter('%(levelname)s %(lineno)s %(created)s: %(message)s'))
+
+stream_handler = logging.StreamHandler()
+
+general_logger = logging.getLogger(__name__)
+general_logger.setLevel(logging.INFO)
+general_logger.addHandler(general_handler)
+general_logger.addHandler(stream_handler)
 
 COMPENSATION_1_RATIO = 0.5  # for the Molecule.update_v_hxc
 COMPENSATION_MAX_ITER_HISTORY = 4
@@ -263,6 +276,9 @@ class Molecule:
             model = scipy.optimize.root(cost_function_whole_block, starting_approximation,
                                         args=(self,), options={'fatol': 2e-3, "maxfev": ROOT_LPFET_SOLVER_MAX_ITER},
                                         method='df-sane')
+        #     model = scipy.optimize.root(cost_function_whole_block, starting_approximation,
+        #                                         args=(self,), options={'xtol': 1e-4},
+        #                                         method='hybr')
         else:
             model = scipy.optimize.root(cost_function_whole, starting_approximation,
                                         args=(self,), options={'fatol': 2e-3, "maxfev": ROOT_LPFET_SOLVER_MAX_ITER},
@@ -860,6 +876,23 @@ def generate_from_graph(sites, connections):
         t[pair[1], pair[0]] = -param
     return t, v, u
 
+# CALCULATE JACOBIAN MATRIX
+#
+# plus_list = []
+# minus_list = []
+# for i in range(7):
+#     add = np.zeros(7)
+#     add[i] += 0.1
+#     original = cost_function_whole_block(starting_approximation, self)
+#     plus = cost_function_whole_block(starting_approximation + add, self)
+#     minus = cost_function_whole_block(starting_approximation - add, self)
+#     plus_list.append((plus - original) / 0.1)
+#     minus_list.append((original - minus) / 0.1)
+# plus_list = np.array(plus_list).T
+# minus_list = np.array(minus_list).T
+# essentials.print_matrix(plus_list)
+# print()
+# essentials.print_matrix(minus_list)
 
 if __name__ == "__main__":
     pass
