@@ -7,13 +7,21 @@ import numpy as np
 import matplotlib.pyplot as plt
 from LPFET import essentials
 import matplotlib as mpl
+import logging
 
+general_handler = logging.FileHandler('general_batch.log', mode='w')
+general_handler.setFormatter(logging.Formatter('%(levelname)6s %(lineno)4s %(asctime)s: %(message)s',
+                                               "%Y-%m-%d %H:%M:%S"))
+stream_handler = logging.StreamHandler()
+
+general_logger = logging.getLogger(__name__)
+general_logger.setLevel(logging.INFO)
+general_logger.addHandler(general_handler)
+general_logger.addHandler(stream_handler)
 
 def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecule_name, u_param=None, i_param=None,
                    delta_x=None, max_value=None, r_param=None, force=True, blocks=None):
-    lpfet.COMPENSATION_5_FACTOR = 1
-    lpfet.COMPENSATION_5_FACTOR2 = 1
-    lpfet.COMPENSATION_1_RATIO = 0.25
+    start_iter = lpfet.ITERATION_NUM
     name = molecule_name
     if u_param is not None and i_param is not None:
         raise Exception("Can't specify both parameters")
@@ -43,7 +51,7 @@ def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecul
 
     if not force:
         if os.path.isfile(folder_name + "/Energy_errors_per_site.svg") or os.path.isfile(folder_name + 'skipped.txt'):
-            print("THERE IS ALREADY DATA. FUNCTION WILL EXIT.")
+            general_logger.info(f"THERE IS ALREADY DATA in folder {folder_name}. FUNCTION WILL EXIT.")
             return 0
 
     mol1 = lpfet.Molecule(n_sites, n_electron, name)
@@ -81,7 +89,7 @@ def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecul
             for ind in range(approx_len):
                 starting_approximation_c_hxc[ind] = old_v_hxc[mol1.equiv_atom_groups[ind + 1][0]]
             mol1.clear_object(name)
-        print(f'\n\n{i:.1f}, {i / max(x) * 100:.1f}%: ', end=' ')
+        general_logger.info(f'{i:.1f}, {i / max(x) * 100:.1f}%: ')
         nodes_dict, edges_dict = model_function(i_param, n_sites, u_param)
         t, v_ext, u = lpfet.generate_from_graph(nodes_dict, edges_dict)
         mol1.report_string = f'Object with {n_sites} sites and {n_electron} electrons\n'
@@ -97,13 +105,13 @@ def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecul
         try:
             mol1.find_solution_as_root(starting_approximation_c_hxc)
         except lpfet.errors.DegeneratedStatesError as e:
-            print('Degenerated energy levels --> skipping this system.\n', e, '--end--\n')
+            general_logger.info('Degenerated energy levels --> skipping this system.\n', e, '--end--')
             continue
         except lpfet.errors.HouseholderTransformationError as e:
-            print('Unable to calculate Householder transformation --> skipping this system.\n', e, '--end--\n')
+            general_logger.info('Unable to calculate Householder transformation --> skipping this system.\n', e, '--end--')
             continue
         except lpfet.errors.EmptyFullOrbitalError as e:
-            print('Created KS densities were either full or empty --> skipping this system.\n', e, '--end--\n')
+            general_logger.info('Created KS densities were either full or empty --> skipping this system.\n', e, '--end--')
             continue
         time2 = datetime.now()
         # mol1.optimize_solution(5, 0.2)
@@ -118,11 +126,11 @@ def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecul
         time4 = datetime.now()
         v_hxc_correct = mol_fci.calculate_v_hxc(mol1.v_hxc)
         time5 = datetime.now()
-        print(v_hxc_correct)
         if type(v_hxc_correct) == bool:
-            print("didn't manage to converge")
+            general_logger.info("Couldn't calculate correct v_hxc")
             v_hxc_ref_progress.append(np.zeros(n_sites) * np.nan)
         else:
+            general_logger.info(f'correct v_hxc: {v_hxc_correct}')
             v_hxc_ref_progress.append(v_hxc_correct.copy())
         energy_per_site.append(mol1.per_site_energy)
         energy_ref_per_site.append(energy_ref_per_site_i)
@@ -142,7 +150,11 @@ def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecul
         return np.array(time_list)
     calculate_graphs(folder_name, x_true, y, y_ref, y_simple, energy, energy_ref, v_hxc_progression_list,
                      correction_dict_list, energy_per_site, energy_ref_per_site, v_hxc_ref_progress, x_label)
-    print(f"time spent for making graphs: {(datetime.now()-time_before_graphs).total_seconds()}")
+    time_list = np.array(time_list)
+    general_logger.info(f"\n  t_root      t_e    t_fci  t_v_hxc\n{essentials.print_matrix(time_list, ret=True)}")
+    general_logger.info(f"time spent for making graphs: {(datetime.now() - time_before_graphs).total_seconds()}")
+    end_iter = lpfet.ITERATION_NUM
+    general_logger.info(f"Iteration number: {end_iter - start_iter}")
     return np.array(time_list)
 
 
