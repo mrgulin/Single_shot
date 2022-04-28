@@ -16,14 +16,16 @@ from LPFET import errors
 import logging
 
 # logging.basicConfig(filename='optimizer-comparison.log', level=logging.DEBUG)
-formatter = logging.Formatter('%(levelname)s %(lineno)s %(asctime)s: %(message)s', "%Y-%m-%d %H:%M:%S")
+formatter = logging.Formatter('%(levelname)6s %(lineno)4s %(asctime)s: %(message)s', "%Y-%m-%d %H:%M:%S")
 general_handler = logging.FileHandler('general_lpfet.log', mode='w')
 general_handler.setFormatter(formatter)
+general_handler.setLevel(logging.INFO)
 
 stream_handler = logging.StreamHandler()
+stream_handler.setLevel(logging.WARNING)
 
-general_logger = logging.getLogger(__name__)
-general_logger.setLevel(logging.INFO)
+general_logger = logging.getLogger('lpfet_general_logger')
+general_logger.setLevel(logging.DEBUG)
 general_logger.addHandler(general_handler)
 general_logger.addHandler(stream_handler)
 
@@ -36,6 +38,7 @@ ITERATION_NUM = 0
 ROOT_LPFET_SOLVER_MAX_ITER = 100
 np.seterr(all='raise')
 np.errstate(all='raise')
+np.set_printoptions(linewidth=np.inf)
 
 
 def change_indices(array_inp: np.array, site_id: typing.Union[int, typing.List[int]],
@@ -176,7 +179,7 @@ class Molecule:
         if not np.allclose(self.t, self.t.T):
             raise Exception("t matrix should have been symmetric")
         equiv_atom_group_list = cangen(t, np.array(u) * 100 + np.array(v_ext))
-        general_logger.info(equiv_atom_group_list)
+        general_logger.info(f'Equivalent atoms: {equiv_atom_group_list}')
         self.equiv_atom_groups = []
         for index, item in enumerate(equiv_atom_group_list):
             self.equiv_atom_groups.append(tuple(item))
@@ -189,7 +192,7 @@ class Molecule:
     def prepare_for_block(self, blocks: typing.List[typing.List[int]]):
         n_blocks = len(blocks)
         if 0 not in blocks[0]:
-            general_logger.info('site 0 must be in the first block')
+            general_logger.error('site 0 must be in the first block')
             return 0
         self.blocks = blocks
         normalized_blocks = [[int(self.equiv_atom_groups_reverse[j]) for j in i] for i in blocks]
@@ -206,7 +209,6 @@ class Molecule:
                     equiv_block_list[-1].append(j)
                     ignored.append(j)
         self.equiv_block_groups = equiv_block_list
-        general_logger.info(self.equiv_block_groups)
         ignore = []
         equiv_atoms_in_block = []
         for i in range(self.Ns):
@@ -227,7 +229,8 @@ class Molecule:
                     equiv_atoms_in_block[-1].append(j)
                     ignore.append(j)
             ignore.append(i)
-        general_logger.info(equiv_atoms_in_block)
+        general_logger.info(f"Eqivalent blocks: {self.equiv_block_groups}")
+        general_logger.info(f"Equvialent atoms inside blocks: {equiv_atoms_in_block}")
         self.equiv_atoms_in_block = equiv_atoms_in_block
 
         for block_i in blocks:
@@ -284,7 +287,7 @@ class Molecule:
                                         args=(self,), options={'fatol': 2e-3, "maxfev": ROOT_LPFET_SOLVER_MAX_ITER},
                                         method='df-sane')
         if not model.success or np.sum(np.square(model.fun)) > 0.01:
-            general_logger.info("Didn't converge :c ")
+            general_logger.error("Optimization function for the whole system didn't find solution")
             return False
         v_hxc = model.x
         general_logger.info(model.fun)
@@ -296,13 +299,8 @@ class Molecule:
         self.h_ks = self.t + np.diag(self.v_s)
         try:
             self.epsilon_s, self.wf_ks = np.linalg.eigh(self.h_ks, 'U')
-        except:
-            general_logger.info(f'!!!!{self.v_ext}, {self.Ne}, {self.u}')
-            general_logger.info(f'!!!!{self.v_ext}, {self.Ne}, {self.u}')
-            general_logger.info(f'!!!!{self.v_ext}, {self.Ne}, {self.u}')
-            general_logger.info(f'!!!!{self.v_ext}, {self.Ne}, {self.u}')
-
-            raise np.linalg.LinAlgError(f"Eigenvalues did not converge\n{essentials.print_matrix(self.h_ks)}")
+        except np.linalg.LinAlgError as e:
+            raise e(f"Eigenvalues on calculate_ks did not converge\n{essentials.print_matrix(self.h_ks)}")
         self.y_a = generate_1rdm(self.Ns, self.Ne, self.wf_ks)
         if self.Ne > 0:
             e_homo = self.epsilon_s[(self.Ne - 1) // 2]
@@ -891,7 +889,6 @@ def generate_from_graph(sites, connections):
 # plus_list = np.array(plus_list).T
 # minus_list = np.array(minus_list).T
 # essentials.print_matrix(plus_list)
-# general_logger.info()
 # essentials.print_matrix(minus_list)
 
 if __name__ == "__main__":
