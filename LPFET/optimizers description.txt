@@ -1,0 +1,9 @@
+root(method=’df-sane’):
+    fatol: norm has to be bigger than fatol to end
+    norm: norm is function that calculates the norm: I do max(abs(X))
+    ftol: It depends on the starting approximation. Should be 0 to have expected behaveour!!
+    ||func(x)|| < fatol + ftol ||func(x_0)||.
+
+xtol: |x_iter-1 / x_iter -1| has to be smaller than xtol
+
+eps: it is a parameter that is used in calculation of the jacobian matrix and it tells us what to use as deltax when calculating derivatives
