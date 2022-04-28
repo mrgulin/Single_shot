@@ -40,6 +40,8 @@ np.seterr(all='raise')
 np.errstate(all='raise')
 np.set_printoptions(linewidth=np.inf)
 
+def abs_norm(x):
+    return np.max(np.abs(x))
 
 def change_indices(array_inp: np.array, site_id: typing.Union[int, typing.List[int]],
                    to_index: typing.Union[int, typing.List[int], None] = None):
@@ -277,14 +279,16 @@ class Molecule:
                             f'len(eq_atom) - 1 ({len(starting_approximation)} != {len(eq_atom) - 1}')
         if self.block_hh:
             model = scipy.optimize.root(cost_function_whole_block, starting_approximation,
-                                        args=(self,), options={'fatol': 2e-3, "maxfev": ROOT_LPFET_SOLVER_MAX_ITER},
+                                        args=(self,), options={'fatol': 1e-2, "maxfev": ROOT_LPFET_SOLVER_MAX_ITER,
+                                                               'fnorm': abs_norm, 'ftol': 0},
                                         method='df-sane')
         #     model = scipy.optimize.root(cost_function_whole_block, starting_approximation,
         #                                         args=(self,), options={'xtol': 1e-4},
         #                                         method='hybr')
         else:
             model = scipy.optimize.root(cost_function_whole, starting_approximation,
-                                        args=(self,), options={'fatol': 2e-3, "maxfev": ROOT_LPFET_SOLVER_MAX_ITER},
+                                        args=(self,), options={'fatol': 1e-2, "maxfev": ROOT_LPFET_SOLVER_MAX_ITER,
+                                                               'fnorm': abs_norm, 'ftol': 0},
                                         method='df-sane')
         if not model.success or np.sum(np.square(model.fun)) > 0.01:
             general_logger.error("Optimization function for the whole system didn't find solution")
@@ -740,7 +744,7 @@ def cost_function_whole_block(v_hxc_approximation: np.array, mol_obj: Molecule) 
                 model = scipy.optimize.root(cost_function_casci_root, mol_obj.v_hxc[site_id],
                                             args=(mol_obj.embedded_mol_dict[block_size], h_tilde_dimer, u_0_dimer,
                                                   mol_obj.n_ks[site_id], v_tilde),
-                                            options={'fatol': 1e-2, 'maxfev': 40}, method='df-sane')
+                                            options={'fatol': 1e-3, 'maxfev': 40, 'fnorm': abs_norm, 'ftol': 0}, method='df-sane')
             except FloatingPointError as e:
                 general_logger.info(e)
                 model = scipy.optimize.OptimizeResult()
@@ -752,7 +756,7 @@ def cost_function_whole_block(v_hxc_approximation: np.array, mol_obj: Molecule) 
                 # Second chance with another model
                 model = scipy.optimize.root(cost_function_casci_root, mol_obj.v_hxc[site_id],
                                             args=(mol_obj.embedded_mol_dict[block_size], h_tilde_dimer, u_0_dimer,
-                                                  mol_obj.n_ks[site_id], v_tilde), method='hybr')
+                                                  mol_obj.n_ks[site_id], v_tilde), options={'eps': 0.01}, method='hybr')
             if not model.success or np.sum(np.square(model.fun)) > 0.01:
                 general_logger.info("Didn't converge :c ")
                 raise Exception(f'Inversion of a cluster did not succeed'
@@ -799,10 +803,10 @@ def cost_function_whole_block(v_hxc_approximation: np.array, mol_obj: Molecule) 
             values_from_same_group = output_array_non_reduced[list(group_site_tuple)]
             values_from_same_group = values_from_same_group[np.logical_not(np.isnan(values_from_same_group))]
             output_array[group_id - 1] = np.mean(values_from_same_group)
-    rms = np.sqrt(np.mean(np.square(output_array)))
+    max_dev = np.max(np.abs(output_array))
     general_logger.info(f"Block: for input {''.join(['{num:{dec}}'.format(num=cell, dec='+10.2e') for cell in mol_obj.v_hxc])}"
           f" error is {''.join(['{num:{dec}}'.format(num=cell, dec='+10.2e') for cell in output_array])} "
-          f" (RMS = {rms})")
+          f" (max deviation = {max_dev})")
     return output_array
 
 
