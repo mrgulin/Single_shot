@@ -69,12 +69,37 @@ def change_indices(array_inp: np.array, site_id: typing.Union[int, typing.List[i
             to_index = list(range(len(site_id)))
         # It mustn't be a numpy array because we want + operator to be concatenation and not sum of arrays
     if site_id != to_index:
+        set_list = to_index + site_id
+        get_list = site_id + to_index
+        if len(np.unique(set_list)) != len(set_list):
+            # In this case simple approach don't work since we are writing and reading from same column. We have to get
+            # rid of the duplicate enteries! we do this by next formula:
+            set_list2 = []
+            get_list2 = []
+            buffer_set = 0
+            buffer_get = 0
+            set_list = to_index + site_id
+            get_list = site_id + to_index
+            for i in range(len(set_list)):
+                while i + buffer_set < len(set_list) and set_list[i + buffer_set] in set_list2:
+                    buffer_set += 1
+                while i + buffer_get < len(get_list) and get_list[i + buffer_get] in get_list2:
+                    buffer_get += 1
+                if i + buffer_set == len(set_list) or i + buffer_get == len(get_list):
+
+                    break
+                set_list2.append(set_list[buffer_set + i])
+                get_list2.append(get_list[buffer_get + i])
+            # general_logger.error(f"Special case with column switching: "
+            #                      f"{get_list}, {set_list} --> {get_list2}, {set_list2}")
+            get_list = get_list2
+            set_list = set_list2
         # We have to move impurity on the index 0
         if array_inp.ndim == 2:
-            array[:, to_index + site_id] = array[:, site_id + to_index]
-            array[to_index + site_id, :] = array[site_id + to_index, :]
+            array[:, set_list] = array[:, get_list]
+            array[set_list, :] = array[get_list, :]
         elif array_inp.ndim == 1:
-            array[to_index + site_id] = array[site_id + to_index]
+            array[set_list] = array[get_list]
     return array
 
 
