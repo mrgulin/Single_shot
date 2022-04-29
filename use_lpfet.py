@@ -2,16 +2,15 @@ import LPFET.lpfet as lpfet
 import numpy as np
 import LPFET.essentials as essentials
 from datetime import datetime
+lpfet.stream_handler.setLevel(2)
 
 name = 'chain1'
-mol1 = lpfet.Molecule(6, 6, name)
-mol_full = lpfet.class_qnb.HamiltonianV2(6, 6)
-mol_full.build_operator_a_dagger_a()
+mol1 = lpfet.Molecule(8, 8, name)
 first = False
-nodes_dict, edges_dict = essentials.generate_ring4(i=1, n_sites=6, U_param=5)
+nodes_dict, edges_dict = essentials.generate_random1(i=1, n_sites=8, U_param=1)
 t, v_ext, u = lpfet.generate_from_graph(nodes_dict, edges_dict)
 mol1.add_parameters(u, t, v_ext)
-mol1.prepare_for_block([[0, 1], [2, 3], [4, 5]])
+mol1.prepare_for_block([[0, 1], [2, 3, 4], [5, 6, 7]])
 print(mol1.v_ext)
 mol1.v_hxc = np.zeros(mol1.Ns)
 mol1.v_hxc_progress = []
