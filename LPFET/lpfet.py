@@ -24,17 +24,11 @@ general_handler.setLevel(20)
 stream_handler = logging.StreamHandler()
 stream_handler.setLevel(25)
 
-general_logger = logging.getLogger('lpfet_general_logger')
+general_logger = logging.getLogger(__name__)
 general_logger.setLevel(-1)
 general_logger.addHandler(general_handler)
 general_logger.addHandler(stream_handler)
 
-# optimize_handler = logging.FileHandler('optimize_root.log', mode='w')
-# optimize_handler.setFormatter(formatter)
-# optimize_logger = logging.getLogger('optimizing_root')
-# optimize_logger.setLevel(logging.DEBUG)
-# optimize_logger.addHandler(optimize_handler)
-# optimize_logger.addHandler(stream_handler)
 
 COMPENSATION_1_RATIO = 0.5  # for the Molecule.update_v_hxc
 COMPENSATION_MAX_ITER_HISTORY = 4
@@ -329,33 +323,6 @@ class Molecule:
                                     method='df-sane')
         optimize_progress_output = np.array(self.optimize_progress_output)
         optimize_progress_input = np.array(self.optimize_progress_input)
-        # optimize_logger.info('New optimization:')
-        # algorithms = ['hybr', 'lm', 'broyden1', 'broyden2', 'anderson', 'linearmixing', 'diagbroyden',
-        #               'excitingmixing', 'krylov', 'df-sane']
-        # options = {'hybr':{'eps':0.01, 'xtol': 1e-3}, 'lm': {'ftol': 1e-4, 'eps': 0.01},
-        #            'broyden1': {'fatol': 1e-2, "tol_norm": abs_norm},
-        #            'broyden2': {'fatol': 1e-2, "tol_norm": abs_norm},
-        #            'anderson': {'fatol': 1e-2, "tol_norm": abs_norm},
-        #            'linearmixing': {'fatol': 1e-2, "tol_norm": abs_norm},
-        #            'diagbroyden': {'fatol': 1e-2, "tol_norm": abs_norm},
-        #            'excitingmixing': {'fatol': 1e-2, "tol_norm": abs_norm},
-        #            'krylov': {'fatol': 1e-2, "tol_norm": abs_norm}, 'df-sane': {'fatol': 1e-2,
-        #                                                                         'fnorm': abs_norm, 'ftol': 0}}
-        # for one_algorithm in algorithms:
-        #     time_start = datetime.now()
-        #     try:
-        #         model = scipy.optimize.root(cost_function_whole_block, starting_approximation,
-        #                                     args=(self,), method=one_algorithm, options=options[one_algorithm])
-        #     except:
-        #         model = scipy.optimize.OptimizeResult()
-        #         model.x = np.nan
-        #         model.fun = np.nan
-        #     stop_time = datetime.now()
-        #     optimize_logger.debug(f"{one_algorithm:>14s} {stop_time - time_start}: {np.sum(np.square(model.fun))}")
-
-        #     model = scipy.optimize.root(cost_function_whole_block, starting_approximation,
-        #                                         args=(self,), options={'xtol': 1e-4},
-        #                                         method='hybr')
         if not model.success or np.sum(np.square(model.fun)) > 0.01:
 
             weights = np.sqrt(np.sum(np.square(1 / (optimize_progress_output + 1e-5)), axis=1))
