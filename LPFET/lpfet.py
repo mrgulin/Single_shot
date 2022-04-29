@@ -861,7 +861,7 @@ def cost_function_whole_block(v_hxc_approximation: np.array, mol_obj: Molecule) 
             values_from_same_group = values_from_same_group[np.logical_not(np.isnan(values_from_same_group))]
             output_array[group_id - 1] = np.mean(values_from_same_group)
     max_dev = np.max(np.abs(output_array))
-    general_logger.info(f"Block: for input {''.join(['{num:{dec}}'.format(num=cell, dec='+10.2e') for cell in mol_obj.v_hxc])}"
+    general_logger.info(f"Block: for input {''.join(['{num:{dec}}'.format(num=cell, dec='+10.3f') for cell in mol_obj.v_hxc])}"
           f" error is {''.join(['{num:{dec}}'.format(num=cell, dec='+10.2e') for cell in output_array])} "
           f" (max deviation = {max_dev})")
     return output_array
