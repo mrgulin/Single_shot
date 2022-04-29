@@ -386,7 +386,7 @@ class Molecule:
         try:
             self.epsilon_s, self.wf_ks = np.linalg.eigh(self.h_ks, 'U')
         except np.linalg.LinAlgError as e:
-            raise e(f"Eigenvalues on calculate_ks did not converge\n{essentials.print_matrix(self.h_ks)}")
+            raise Exception(f"calculate_ks did not converge\n{essentials.print_matrix(self.h_ks)}") from e
         self.y_a = generate_1rdm(self.Ns, self.Ne, self.wf_ks)
         if self.Ne > 0:
             e_homo = self.epsilon_s[(self.Ne - 1) // 2]
