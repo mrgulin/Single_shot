@@ -584,7 +584,7 @@ class Molecule:
         general_logger.info("FCI densities (per spin):", densities)
         general_logger.info(f'FCI energy: {mol_full.eig_values[0]}')
         return y_ab, mol_full, (total_energy, kinetic_contribution, v_ext_contribution,
-                                u_contribution, 0)
+                                u_contribution, 0), np.array([])
 
     def plot_density_evolution(self):
         self.density_progress = np.array(self.density_progress)
