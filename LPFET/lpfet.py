@@ -41,6 +41,8 @@ COMPENSATION_MAX_ITER_HISTORY = 4
 COMPENSATION_5_FACTOR = 1
 COMPENSATION_5_FACTOR2 = 0.5
 ITERATION_NUM = 0
+ROOT_FINDING_LIST_INPUT = []
+ROOT_FINDING_LIST_OUTPUT = []
 
 ROOT_LPFET_SOLVER_MAX_ITER = 100
 np.seterr(all='raise')
@@ -196,6 +198,9 @@ class Molecule:
         # potentials. This list is important because we have to optimize len(..) - 1 Hxc potentials
         self.block_hh = False  # Variable that will be checked to see if algorithm should do single impurity or not.
 
+        self.optimize_progress_input = []
+        self.optimize_progress_output = []
+
     def add_parameters(self, u, t, v_ext,
                        v_term_repulsion_ratio: typing.Union[bool, float] = False):
         if len(u) != self.Ns or len(t) != self.Ns or len(v_ext) != self.Ns:
@@ -311,44 +316,65 @@ class Molecule:
             raise Exception(f'Wrong length of the starting approximation: len(starting_approximation) != '
                             f'len(eq_atom) - 1 ({len(starting_approximation)} != {len(eq_atom) - 1}')
         if self.block_hh:
-            model = scipy.optimize.root(cost_function_whole_block, starting_approximation,
-                                        args=(self,), options={'fatol': 1e-2, "maxfev": ROOT_LPFET_SOLVER_MAX_ITER,
-                                                               'fnorm': abs_norm, 'ftol': 0},
-                                        method='df-sane')
-            # optimize_logger.info('New optimization:')
-            # algorithms = ['hybr', 'lm', 'broyden1', 'broyden2', 'anderson', 'linearmixing', 'diagbroyden',
-            #               'excitingmixing', 'krylov', 'df-sane']
-            # options = {'hybr':{'eps':0.01, 'xtol': 1e-3}, 'lm': {'ftol': 1e-4, 'eps': 0.01},
-            #            'broyden1': {'fatol': 1e-2, "tol_norm": abs_norm},
-            #            'broyden2': {'fatol': 1e-2, "tol_norm": abs_norm},
-            #            'anderson': {'fatol': 1e-2, "tol_norm": abs_norm},
-            #            'linearmixing': {'fatol': 1e-2, "tol_norm": abs_norm},
-            #            'diagbroyden': {'fatol': 1e-2, "tol_norm": abs_norm},
-            #            'excitingmixing': {'fatol': 1e-2, "tol_norm": abs_norm},
-            #            'krylov': {'fatol': 1e-2, "tol_norm": abs_norm}, 'df-sane': {'fatol': 1e-2,
-            #                                                                         'fnorm': abs_norm, 'ftol': 0}}
-            # for one_algorithm in algorithms:
-            #     time_start = datetime.now()
-            #     try:
-            #         model = scipy.optimize.root(cost_function_whole_block, starting_approximation,
-            #                                     args=(self,), method=one_algorithm, options=options[one_algorithm])
-            #     except:
-            #         model = scipy.optimize.OptimizeResult()
-            #         model.x = np.nan
-            #         model.fun = np.nan
-            #     stop_time = datetime.now()
-            #     optimize_logger.debug(f"{one_algorithm:>14s} {stop_time - time_start}: {np.sum(np.square(model.fun))}")
+            opt_function = cost_function_whole_block
+        else:
+            opt_function = cost_function_whole
+        general_logger.log(25, f'starting to to optimization of Hxc potentials, '
+                               f'starting approximation = {starting_approximation}')
+        self.optimize_progress_output = []
+        self.optimize_progress_input = []
+        model = scipy.optimize.root(opt_function, starting_approximation,
+                                    args=(self,), options={'fatol': 1e-2, "maxfev": ROOT_LPFET_SOLVER_MAX_ITER,
+                                                           'fnorm': abs_norm, 'ftol': 0, "M": 30},
+                                    method='df-sane')
+        optimize_progress_output = np.array(self.optimize_progress_output)
+        optimize_progress_input = np.array(self.optimize_progress_input)
+        # optimize_logger.info('New optimization:')
+        # algorithms = ['hybr', 'lm', 'broyden1', 'broyden2', 'anderson', 'linearmixing', 'diagbroyden',
+        #               'excitingmixing', 'krylov', 'df-sane']
+        # options = {'hybr':{'eps':0.01, 'xtol': 1e-3}, 'lm': {'ftol': 1e-4, 'eps': 0.01},
+        #            'broyden1': {'fatol': 1e-2, "tol_norm": abs_norm},
+        #            'broyden2': {'fatol': 1e-2, "tol_norm": abs_norm},
+        #            'anderson': {'fatol': 1e-2, "tol_norm": abs_norm},
+        #            'linearmixing': {'fatol': 1e-2, "tol_norm": abs_norm},
+        #            'diagbroyden': {'fatol': 1e-2, "tol_norm": abs_norm},
+        #            'excitingmixing': {'fatol': 1e-2, "tol_norm": abs_norm},
+        #            'krylov': {'fatol': 1e-2, "tol_norm": abs_norm}, 'df-sane': {'fatol': 1e-2,
+        #                                                                         'fnorm': abs_norm, 'ftol': 0}}
+        # for one_algorithm in algorithms:
+        #     time_start = datetime.now()
+        #     try:
+        #         model = scipy.optimize.root(cost_function_whole_block, starting_approximation,
+        #                                     args=(self,), method=one_algorithm, options=options[one_algorithm])
+        #     except:
+        #         model = scipy.optimize.OptimizeResult()
+        #         model.x = np.nan
+        #         model.fun = np.nan
+        #     stop_time = datetime.now()
+        #     optimize_logger.debug(f"{one_algorithm:>14s} {stop_time - time_start}: {np.sum(np.square(model.fun))}")
+
         #     model = scipy.optimize.root(cost_function_whole_block, starting_approximation,
         #                                         args=(self,), options={'xtol': 1e-4},
         #                                         method='hybr')
-        else:
-            model = scipy.optimize.root(cost_function_whole, starting_approximation,
-                                        args=(self,), options={'fatol': 1e-2, "maxfev": ROOT_LPFET_SOLVER_MAX_ITER,
-                                                               'fnorm': abs_norm, 'ftol': 0},
-                                        method='df-sane')
         if not model.success or np.sum(np.square(model.fun)) > 0.01:
-            general_logger.error("Optimization function for the whole system didn't find solution")
-            return False
+
+            weights = np.sqrt(np.sum(np.square(1 / (optimize_progress_output + 1e-5)), axis=1))
+            mask = weights > np.percentile(weights, 95)
+            final_approximation1 = np.average(optimize_progress_input[mask], axis=0, weights=weights[mask])
+            error1 = opt_function(final_approximation1, self)
+            final_approximation2 = optimize_progress_input[weights.argsort()[::-1]][0]
+            error2 = opt_function(final_approximation2, self)
+            if abs_norm(error2) > abs_norm(error1):
+                final_approximation = final_approximation1
+                final_error = error1
+            else:
+                final_approximation = final_approximation2
+                final_error = error2
+            if abs_norm(final_error) < 5e-2:
+                return final_approximation
+            else:
+                general_logger.error("Optimization function for the whole system didn't find solution")
+                return False
         v_hxc = model.x
         general_logger.log(25, f"Optimized: nfev = {model.nfev}, fun = {model.fun}, x = {model.x}")
         general_logger.info(model)
@@ -652,6 +678,9 @@ class Molecule:
 
         self.oscillation_correction_dict = dict()
 
+        self.optimize_progress_input = []
+        self.optimize_progress_output = []
+
     def update_variables_embedded(self, v_tilde, h_tilde, site_group, mu_imp, embedded_mol, u_0_dimer=None):
         two_rdm_u = embedded_mol.build_2rdm_fh_on_site_repulsion(u_0_dimer)
         on_site_repulsion_i = two_rdm_u[0, 0, 0, 0] * u_0_dimer[0, 0, 0, 0]
@@ -771,6 +800,10 @@ def cost_function_whole(v_hxc_approximation: np.array, mol_obj: Molecule) -> np.
 
 
 def cost_function_whole_block(v_hxc_approximation: np.array, mol_obj: Molecule) -> np.array:
+    global ROOT_FINDING_LIST_INPUT, ROOT_FINDING_LIST_OUTPUT
+    temp1 = ''.join(['{num:{dec}}'.format(num=cell, dec='+10.3f') for cell in mol_obj.v_hxc])
+    general_logger.log(15, f"| Start of cost function 1: Input = {temp1}")
+    mol_obj.optimize_progress_input.append(v_hxc_approximation.copy())
     mol_obj.v_hxc = np.zeros(mol_obj.Ns, float)
     for group_id, group_site_tuple in enumerate(mol_obj.equiv_atom_groups):
         if group_id != 0:
@@ -805,10 +838,13 @@ def cost_function_whole_block(v_hxc_approximation: np.array, mol_obj: Molecule) 
             if 0 not in site_id:
                 raise Exception("Unexpected behaviour: First impurity site should have been the 0th site")
             try:
+                ROOT_FINDING_LIST_INPUT = []
+                ROOT_FINDING_LIST_OUTPUT = []
                 model = scipy.optimize.root(cost_function_casci_root, mol_obj.v_hxc[site_id],
                                             args=(mol_obj.embedded_mol_dict[block_size], h_tilde_dimer, u_0_dimer,
                                                   mol_obj.n_ks[site_id], v_tilde),
-                                            options={'fatol': 1e-3, 'maxfev': 40, 'fnorm': abs_norm, 'ftol': 0}, method='df-sane')
+                                            options={'fatol': 1e-4, 'maxfev': 40, 'fnorm': abs_norm, 'ftol': 0},
+                                            method='df-sane')
             except FloatingPointError as e:
                 general_logger.info(e)
                 model = scipy.optimize.OptimizeResult()
@@ -822,11 +858,39 @@ def cost_function_whole_block(v_hxc_approximation: np.array, mol_obj: Molecule) 
                 model = scipy.optimize.root(cost_function_casci_root, mol_obj.v_hxc[site_id],
                                             args=(mol_obj.embedded_mol_dict[block_size], h_tilde_dimer, u_0_dimer,
                                                   mol_obj.n_ks[site_id], v_tilde), options={'eps': 0.01}, method='hybr')
-            if not model.success or np.sum(np.square(model.fun)) > 0.01:
-                general_logger.info("Didn't converge :c ")
-                raise Exception(f'Inversion of a cluster did not succeed'
-                                f'\n{essentials.print_matrix(h_tilde_dimer, ret=True)}\n'
-                                f'Desired density: {mol_obj.n_ks[site_id]}')
+            if not model.success or np.sum(np.square(model.fun)) > 1e-3:
+                general_logger.info("||| Didn't converge :c ")
+                root_finding_list_output = np.array(ROOT_FINDING_LIST_OUTPUT)
+                root_finding_list_input = np.array(ROOT_FINDING_LIST_INPUT)
+                weights = np.sqrt(np.sum(np.square(1 / (root_finding_list_output + 1e-5)), axis=1))
+                mask = weights > np.percentile(weights, 95)
+                final_approximation1 = np.average(root_finding_list_input[mask], axis=0, weights=weights[mask])
+                error1 = cost_function_casci_root(final_approximation1, mol_obj.embedded_mol_dict[block_size],
+                                                  h_tilde_dimer, u_0_dimer,
+                                                  mol_obj.n_ks[site_id], v_tilde)
+                final_approximation2 = root_finding_list_input[weights.argsort()[::-1]][0]
+                error2 = cost_function_casci_root(final_approximation2, mol_obj.embedded_mol_dict[block_size],
+                                                  h_tilde_dimer, u_0_dimer,
+                                                  mol_obj.n_ks[site_id], v_tilde)
+                if abs_norm(error2) > abs_norm(error1):
+                    final_approximation = final_approximation1
+                    final_error = error1
+                else:
+                    final_approximation = final_approximation2
+                    final_error = error2
+                # plt.quiver(ROOT_FINDING_LIST_INPUT[:, 0], ROOT_FINDING_LIST_INPUT[:, 1], ROOT_FINDING_LIST_OUTPUT[:, 0],
+                #            ROOT_FINDING_LIST_OUTPUT[:, 1], scale=1)
+                # plt.xlim(3.35, 3.43)
+                # plt.ylim(2.125, 2.175)
+                # plt.show()
+                if abs_norm(final_error) < 1e-2:
+                    model = scipy.optimize.OptimizeResult()
+                    model.success = True
+                    model.x = final_approximation
+                else:
+                    raise Exception(f'Inversion of a cluster did not succeed'
+                                    f'\n{essentials.print_matrix(h_tilde_dimer, ret=True)}\n'
+                                    f'Desired density: {mol_obj.n_ks[site_id]}\n best guess error was: {final_error}')
             zero_index_in_block = list(site_id).index(0)
             mu_imp = model.x
             mu_imp_first = mu_imp[zero_index_in_block]
@@ -890,7 +954,8 @@ def find_equivalent_block(mol_obj: Molecule, one_site_id: int):
 
 def cost_function_casci_root(mu_imp, embedded_mol, h_tilde_dimer, u_0_dimer, desired_density, v_tilde):
     # mu_imp = mu_imp[0]
-    global ITERATION_NUM
+    global ITERATION_NUM, ROOT_FINDING_LIST_INPUT, ROOT_FINDING_LIST_OUTPUT
+    ROOT_FINDING_LIST_INPUT.append(mu_imp.copy())
     cluster_size = h_tilde_dimer.shape[0]
     half_diagonal = np.arange(cluster_size / 2, dtype=int)
     ITERATION_NUM += 1
@@ -899,7 +964,10 @@ def cost_function_casci_root(mu_imp, embedded_mol, h_tilde_dimer, u_0_dimer, des
     embedded_mol.build_hamiltonian_fermi_hubbard(h_tilde_dimer - mu_imp_array, u_0_dimer, v_term=v_tilde)
     embedded_mol.diagonalize_hamiltonian()
     density_dimer = embedded_mol.calculate_1rdm_spin_free(index=0)
-    return density_dimer[half_diagonal, half_diagonal] - desired_density
+    result = density_dimer[half_diagonal, half_diagonal] - desired_density
+    ROOT_FINDING_LIST_OUTPUT.append(result.copy())
+    general_logger.log(5, f"|||| cost function 2: Input: {mu_imp}; Output: {result}; desired density: {desired_density}")
+    return result
 
 
 def see_landscape_ruggedness(embedded_mol, h_tilde_dimer, u_0_dimer, goal_density=False, optimized_potential=False,
