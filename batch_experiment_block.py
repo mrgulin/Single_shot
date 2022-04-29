@@ -15,9 +15,14 @@ import results.create_list
 
 # time_l = generate_trend(8, 8, essentials.generate_chain1, '8-chain1', i_param=1)
 # time_l = generate_trend(8, 8, essentials.generate_chain1, '8-chain1_block-1', i_param=1, blocks=[[0, 1], [2, 3], [4, 5], [6, 7]])
-time_l = generate_trend(8, 8, essentials.generate_chain1, '8-chain1_block-2', i_param=1, blocks=[[0, 1, 2], [3, 4, 5], [6, 7]])
-essentials.print_matrix(time_l)
-print('iterations: ', lpfet.ITERATION_NUM)
+# time_l = generate_trend(8, 8, essentials.generate_chain1, '8-chain1_block-2', i_param=1, blocks=[[0, 1, 2], [3, 4, 5], [6, 7]])
 
+
+# generate_trend(8, 8, essentials.generate_random1, 'random1', i_param=1)
+# generate_trend(8, 8, essentials.generate_random1, 'random1_block-1', i_param=1, blocks=[[0, 6], [1, 2], [3, 4], [5, 7]])
+# generate_trend(8, 8, essentials.generate_random1, 'random1_block-2', i_param=1, blocks=[[0, 1], [2, 3, 4], [5, 6, 7]])
+generate_trend(8, 8, essentials.generate_random1, 'random1_block-2.2', i_param=1, blocks=[[0, 1, 2], [3, 4], [5, 6, 7]])
+
+print('iterations: ', lpfet.ITERATION_NUM)
 
 results.create_list.update_list()
