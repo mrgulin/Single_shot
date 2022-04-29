@@ -16,19 +16,18 @@ from LPFET import errors
 import logging
 
 # logging.basicConfig(filename='optimizer-comparison.log', level=logging.DEBUG)
-formatter = logging.Formatter('%(levelname)6s %(lineno)4s %(asctime)s: %(message)s', "%Y-%m-%d %H:%M:%S")
+formatter = logging.Formatter('%(levelname)8s %(lineno)4s %(asctime)s: %(message)s', "%Y-%m-%d %H:%M:%S")
 general_handler = logging.FileHandler('general_lpfet.log', mode='w')
 general_handler.setFormatter(formatter)
-general_handler.setLevel(logging.INFO)
+general_handler.setLevel(20)
 
 stream_handler = logging.StreamHandler()
-stream_handler.setLevel(logging.WARNING)
+stream_handler.setLevel(25)
 
 general_logger = logging.getLogger('lpfet_general_logger')
-general_logger.setLevel(logging.DEBUG)
+general_logger.setLevel(-1)
 general_logger.addHandler(general_handler)
 general_logger.addHandler(stream_handler)
-
 
 # optimize_handler = logging.FileHandler('optimize_root.log', mode='w')
 # optimize_handler.setFormatter(formatter)
@@ -48,8 +47,10 @@ np.seterr(all='raise')
 np.errstate(all='raise')
 np.set_printoptions(linewidth=np.inf)
 
+
 def abs_norm(x):
     return np.max(np.abs(x))
+
 
 def change_indices(array_inp: np.array, site_id: typing.Union[int, typing.List[int]],
                    to_index: typing.Union[int, typing.List[int], None] = None):
@@ -86,7 +87,6 @@ def change_indices(array_inp: np.array, site_id: typing.Union[int, typing.List[i
                 while i + buffer_get < len(get_list) and get_list[i + buffer_get] in get_list2:
                     buffer_get += 1
                 if i + buffer_set == len(set_list) or i + buffer_get == len(get_list):
-
                     break
                 set_list2.append(set_list[buffer_set + i])
                 get_list2.append(get_list[buffer_get + i])
@@ -350,7 +350,7 @@ class Molecule:
             general_logger.error("Optimization function for the whole system didn't find solution")
             return False
         v_hxc = model.x
-        general_logger.info(model.fun)
+        general_logger.log(25, f"Optimized: nfev = {model.nfev}, fun = {model.fun}, x = {model.x}")
         general_logger.info(model)
         return v_hxc
 
@@ -442,8 +442,9 @@ class Molecule:
             if 5 in oscillation_compensation:
                 new_mu_imp = mu_minus_1
                 new_mu_imp += np.tanh((mu_imp - mu_minus_1)) / COMPENSATION_5_FACTOR2
-                general_logger.info(f'(({site_group}): {mu_minus_1:.2f} {new_mu_imp - mu_minus_1:.2f} {mu_imp - mu_minus_1:.2f})',
-                      end=', ')
+                general_logger.info(
+                    f'(({site_group}): {mu_minus_1:.2f} {new_mu_imp - mu_minus_1:.2f} {mu_imp - mu_minus_1:.2f})',
+                    end=', ')
                 mu_imp = new_mu_imp
         else:
             index = self.equiv_atom_groups[site_group][0]
@@ -469,9 +470,10 @@ class Molecule:
                 else:
                     self.compensation_ratio_dict[index] = max(self.compensation_ratio_dict[index] - 0.1, 1)
                 new_mu_imp += np.tanh((mu_imp - mu_minus_1)) / self.compensation_ratio_dict[index]
-                general_logger.info(f'(({site_group}): {mu_minus_1:.2f} {new_mu_imp - mu_minus_1:.2f} {mu_imp - mu_minus_1:.2f},'
-                      f' {self.compensation_ratio_dict[index]:.1f})',
-                      end=', ')
+                general_logger.info(
+                    f'(({site_group}): {mu_minus_1:.2f} {new_mu_imp - mu_minus_1:.2f} {mu_imp - mu_minus_1:.2f},'
+                    f' {self.compensation_ratio_dict[index]:.1f})',
+                    end=', ')
                 mu_imp = new_mu_imp
             if 1 in oscillation_compensation:
                 if (mu_minus_2 - mu_minus_1) * (mu_minus_1 - mu_imp) < 0 and \
@@ -500,7 +502,8 @@ class Molecule:
                 factor1 = r2  # np.exp((r2 - 1) * 3)
                 predicted = reg.predict([x_data[-1]])[0]
                 new_mu_imp = factor1 * mu_imp + (1 - factor1) * predicted
-                general_logger.info(f'{mu_minus_2:.2f}->{mu_minus_1:.2f}->{new_mu_imp:.2f}!={mu_imp:.2f} ({r2}, {factor1})', end=', ')
+                general_logger.info(
+                    f'{mu_minus_2:.2f}->{mu_minus_1:.2f}->{new_mu_imp:.2f}!={mu_imp:.2f} ({r2}, {factor1})', end=', ')
                 mu_imp = new_mu_imp
 
         for every_site_id in self.equiv_atom_groups[site_group]:
@@ -523,14 +526,15 @@ class Molecule:
                                      u_contribution, v_term_contribution)
         self.per_site_energy = per_site_array
         if not silent:
-            general_logger.info(f'\n{"site":30s}{" ".join([f"{i:9d}" for i in range(self.Ns)])}{"total":>12s}\n{"Kinetic energy":30s}'
-                  f'{" ".join([f"{i:9.4f}" for i in self.kinetic_contributions])}{kinetic_contribution:12.7f}\n'
-                  f'{"External potential energy":30s}{" ".join([f"{i:9.4f}" for i in per_site_array["v_ext"]])}'
-                  f'{v_ext_contribution:12.7f}\n{"On-site repulsion":30s}'
-                  f'{" ".join([f"{i:9.4f}" for i in self.onsite_repulsion])}{u_contribution:12.7f}\n'
-                  f'{"V-term repulsion":30s}{" ".join([f"{i:9.4f}" for i in self.v_term_repulsion])}'
-                  f'{v_term_contribution:12.7f}\n'
-                  f'{"Occupations":30s}{" ".join([f"{i:9.4f}" for i in self.n_ks])}{np.sum(self.n_ks) * 2:12.7f}')
+            general_logger.info(
+                f'\n{"site":30s}{" ".join([f"{i:9d}" for i in range(self.Ns)])}{"total":>12s}\n{"Kinetic energy":30s}'
+                f'{" ".join([f"{i:9.4f}" for i in self.kinetic_contributions])}{kinetic_contribution:12.7f}\n'
+                f'{"External potential energy":30s}{" ".join([f"{i:9.4f}" for i in per_site_array["v_ext"]])}'
+                f'{v_ext_contribution:12.7f}\n{"On-site repulsion":30s}'
+                f'{" ".join([f"{i:9.4f}" for i in self.onsite_repulsion])}{u_contribution:12.7f}\n'
+                f'{"V-term repulsion":30s}{" ".join([f"{i:9.4f}" for i in self.v_term_repulsion])}'
+                f'{v_term_contribution:12.7f}\n'
+                f'{"Occupations":30s}{" ".join([f"{i:9.4f}" for i in self.n_ks])}{np.sum(self.n_ks) * 2:12.7f}')
             general_logger.info(f'{"_" * 20}\nTotal energy:{total_energy}')
 
         return total_energy
@@ -759,9 +763,10 @@ def cost_function_whole(v_hxc_approximation: np.array, mol_obj: Molecule) -> np.
         mol_obj.update_variables_embedded(v_tilde, h_tilde, site_group, mu_imp, mol_obj.embedded_mol, u_0_dimer)
         first_iteration = False
     rms = np.sqrt(np.mean(np.square(output_array)))
-    general_logger.info(f"for input {''.join(['{num:{dec}}'.format(num=cell, dec='+10.2e') for cell in mol_obj.v_hxc])} error is"
-          f" {''.join(['{num:{dec}}'.format(num=cell, dec='+10.2e') for cell in output_array])} "
-          f" (RMS = {rms})")
+    general_logger.info(
+        f"for input {''.join(['{num:{dec}}'.format(num=cell, dec='+10.2e') for cell in mol_obj.v_hxc])} error is"
+        f" {''.join(['{num:{dec}}'.format(num=cell, dec='+10.2e') for cell in output_array])} "
+        f" (RMS = {rms})")
     return output_array
 
 
@@ -783,6 +788,7 @@ def cost_function_whole_block(v_hxc_approximation: np.array, mol_obj: Molecule) 
         block_id = group_tuple[0]
         site_id = mol_obj.blocks[block_id]
         block_size = len(site_id)
+        general_logger.log(10, f"|| Site id: {site_id}")
         y_a_correct_imp = change_indices(mol_obj.y_a, site_id)
         p, moore_penrose_inv = qnb.tools.block_householder_transformation(y_a_correct_imp, block_size)
         if np.any(np.isnan(p)):
@@ -795,6 +801,7 @@ def cost_function_whole_block(v_hxc_approximation: np.array, mol_obj: Molecule) 
         range1 = np.arange(len(site_id))
         u_0_dimer[range1, range1, range1, range1] += mol_obj.u[site_id]
         if first_iteration:
+            general_logger.log(10, f"||| First cluster: We want to get densities {mol_obj.n_ks[site_id]}")
             if 0 not in site_id:
                 raise Exception("Unexpected behaviour: First impurity site should have been the 0th site")
             try:
@@ -808,8 +815,9 @@ def cost_function_whole_block(v_hxc_approximation: np.array, mol_obj: Molecule) 
                 model.success = False
                 model.x = mol_obj.v_hxc[site_id]
 
-            if not model.success or np.sum(np.square(model.fun)) > 0.01:
-                general_logger.info("Didn't manage to converge with df-sane; trying with hybr root finder")
+            if not model.success or np.sum(np.square(model.fun)) > 1e-3:
+                general_logger.info("||| Embedded cluster: Didn't manage to converge with df-sane;"
+                                    " trying with hybr root finder")
                 # Second chance with another model
                 model = scipy.optimize.root(cost_function_casci_root, mol_obj.v_hxc[site_id],
                                             args=(mol_obj.embedded_mol_dict[block_size], h_tilde_dimer, u_0_dimer,
@@ -826,6 +834,7 @@ def cost_function_whole_block(v_hxc_approximation: np.array, mol_obj: Molecule) 
         mu_imp = mu_imp_first + mol_obj.v_hxc[site_id]
         error_i = cost_function_casci_root(mu_imp, mol_obj.embedded_mol_dict[block_size], h_tilde_dimer, u_0_dimer,
                                            mol_obj.n_ks[site_id], v_tilde)
+        general_logger.log(10, f"||| Higher accuary method gave error = {error_i} for mu_imp={mu_imp}")
         output_array_non_reduced[site_id] = error_i
 
         for index1, one_site_id in enumerate(site_id):
@@ -846,7 +855,6 @@ def cost_function_whole_block(v_hxc_approximation: np.array, mol_obj: Molecule) 
             mol_obj.onsite_repulsion[eq_block] = two_rdm_c[index, index, index, index] * u_0_dimer[
                 index, index, index, index]
 
-
         # mol_obj.update_variables_embedded_block(v_tilde, h_tilde, site_group, mu_imp[one_site_id],
         #                                         mol_obj.embedded_mol_dict[block_size], u_0_dimer)
         first_iteration = False
@@ -861,9 +869,11 @@ def cost_function_whole_block(v_hxc_approximation: np.array, mol_obj: Molecule) 
             values_from_same_group = values_from_same_group[np.logical_not(np.isnan(values_from_same_group))]
             output_array[group_id - 1] = np.mean(values_from_same_group)
     max_dev = np.max(np.abs(output_array))
-    general_logger.info(f"Block: for input {''.join(['{num:{dec}}'.format(num=cell, dec='+10.3f') for cell in mol_obj.v_hxc])}"
-          f" error is {''.join(['{num:{dec}}'.format(num=cell, dec='+10.2e') for cell in output_array])} "
-          f" (max deviation = {max_dev})")
+    general_logger.log(20,
+                       f"| End of cost function 1: for input {''.join(['{num:{dec}}'.format(num=cell, dec='+10.3f') for cell in mol_obj.v_hxc])}"
+                       f" error is {''.join(['{num:{dec}}'.format(num=cell, dec='+10.2e') for cell in output_array])} "
+                       f" (max deviation = {max_dev})")
+    mol_obj.optimize_progress_output.append(output_array.copy())
     return output_array
 
 
@@ -934,6 +944,7 @@ def generate_from_graph(sites, connections):
         t[pair[0], pair[1]] = -param
         t[pair[1], pair[0]] = -param
     return t, v, u
+
 
 # CALCULATE JACOBIAN MATRIX
 #
