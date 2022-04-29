@@ -536,7 +536,8 @@ class Molecule:
         return total_energy
 
     def compare_densities_fci(self, pass_object: Union[bool, class_qnb.HamiltonianV2] = False,
-                              calculate_per_site=False):
+                              calculate_per_site=False) -> typing.Tuple[np.array, class_qnb.HamiltonianV2, tuple,
+                                                                        np.array]:
         if type(pass_object) != bool:
             mol_full = pass_object
         else:
