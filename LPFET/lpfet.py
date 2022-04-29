@@ -199,7 +199,7 @@ class Molecule:
     def add_parameters(self, u, t, v_ext,
                        v_term_repulsion_ratio: typing.Union[bool, float] = False):
         if len(u) != self.Ns or len(t) != self.Ns or len(v_ext) != self.Ns:
-            raise f"Problem with size of matrices: U={len(u)}, t={len(t)}, v_ext={len(v_ext)}"
+            raise Exception(f"Problem with size of matrices: U={len(u)}, t={len(t)}, v_ext={len(v_ext)}")
         self.u = u
         self.t = t
         self.v_ext = v_ext
