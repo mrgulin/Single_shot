@@ -97,6 +97,11 @@ def change_indices(array_inp: np.array, site_id: typing.Union[int, typing.List[i
             array[set_list, :] = array[get_list, :]
         elif array_inp.ndim == 1:
             array[set_list] = array[get_list]
+        elif array_inp.ndim == 4:
+            array[:, :, :, set_list] = array[:, :, :, get_list]
+            array[:, :, set_list, :] = array[:, :, get_list, :]
+            array[:, set_list, :, :] = array[:, get_list, :, :]
+            array[set_list, :, :, :] = array[get_list, :, :, :]
     return array
 
 
