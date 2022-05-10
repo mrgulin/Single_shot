@@ -681,16 +681,16 @@ class MoleculeBlock(Molecule):
         self.block_hh = True
 
     @staticmethod
-    def cost_function_whole(v_hxc_approximation: np.array, mol_obj: 'Molecule') -> np.array:
+    def cost_function_whole(v_hxc_approximation: np.array, mol_obj: 'MoleculeBlock') -> np.array:
         global ROOT_FINDING_LIST_INPUT, ROOT_FINDING_LIST_OUTPUT
-        temp1 = ''.join(['{num:{dec}}'.format(num=cell, dec='+10.3f') for cell in mol_obj.v_hxc])
-        general_logger.log(15, f"| Start of cost function 1: Input = {temp1}")
         mol_obj.optimize_progress_input.append(v_hxc_approximation.copy())
         mol_obj.v_hxc = np.zeros(mol_obj.Ns, float)
         for group_id, group_site_tuple in enumerate(mol_obj.equiv_atom_groups):
             if group_id != 0:
                 for site_id_i in group_site_tuple:
                     mol_obj.v_hxc[site_id_i] = v_hxc_approximation[group_id - 1]
+        temp1 = ''.join([f'{cell:+10.3f}' for cell in mol_obj.v_hxc])
+        general_logger.log(15, f"| Start of cost function 1: Input = {temp1}")
         mol_obj.v_hxc_progress.append(mol_obj.v_hxc)
         mol_obj.calculate_ks()
         mol_obj.density_progress.append(mol_obj.n_ks)
@@ -705,16 +705,29 @@ class MoleculeBlock(Molecule):
             block_size = len(site_id)
             general_logger.log(10, f"|| Site id: {site_id}")
             y_a_correct_imp = change_indices(mol_obj.y_a, site_id)
-            p, moore_penrose_inv = qnb.tools.block_householder_transformation(y_a_correct_imp, block_size)
+            try:
+                p, hh_rest = householder_transformation(y_a_correct_imp, block_size)
+            except BaseException as e:
+                essentials.print_matrix(y_a_correct_imp)
+                print(block_size)
+                raise e
             if np.any(np.isnan(p)):
                 raise errors.HouseholderTransformationError(y_a_correct_imp)
-            t_correct_indices = change_indices(mol_obj.t, site_id)
-            h_tilde = p @ (t_correct_indices + np.diag(change_indices(mol_obj.v_s, site_id))) @ p
+            if mol_obj.ab_initio:
+                h_tilde = p @ (change_indices(mol_obj.h, site_id) + np.diag(change_indices(mol_obj.v_s, site_id))) @ p
+                two_electron_interactions = mol_obj.transform_g_term(p, site_id, block_size)
+                v_tilde = None
+                t_correct_indices = None
+            else:
+                t_correct_indices = change_indices(mol_obj.t, site_id)
+                h_tilde = p @ (t_correct_indices + np.diag(change_indices(mol_obj.v_s, site_id))) @ p
+                v_tilde = mol_obj.transform_v_term(p, site_id)
+                u_0_dimer = np.zeros((block_size * 2, block_size * 2, block_size * 2, block_size * 2), dtype=np.float64)
+                range1 = np.arange(len(site_id))
+                u_0_dimer[range1, range1, range1, range1] += mol_obj.u[site_id]
+                two_electron_interactions = u_0_dimer
             h_tilde_dimer = h_tilde[:block_size * 2, :block_size * 2]
-            v_tilde = mol_obj.transform_v_term(p, site_id)
-            u_0_dimer = np.zeros((block_size * 2, block_size * 2, block_size * 2, block_size * 2), dtype=np.float64)
-            range1 = np.arange(len(site_id))
-            u_0_dimer[range1, range1, range1, range1] += mol_obj.u[site_id]
+
             if first_iteration:
                 general_logger.log(10, f"||| First cluster: We want to get densities {mol_obj.n_ks[site_id]}")
                 if 0 not in site_id:
@@ -723,8 +736,9 @@ class MoleculeBlock(Molecule):
                     ROOT_FINDING_LIST_INPUT = []
                     ROOT_FINDING_LIST_OUTPUT = []
                     model = scipy.optimize.root(mol_obj.cost_function_2, mol_obj.v_hxc[site_id],
-                                                args=(mol_obj.embedded_mol_dict[block_size], h_tilde_dimer, u_0_dimer,
-                                                      mol_obj.n_ks[site_id], v_tilde),
+                                                args=(mol_obj.embedded_mol_dict[block_size], h_tilde_dimer,
+                                                      two_electron_interactions, mol_obj.n_ks[site_id], v_tilde,
+                                                      mol_obj.ab_initio),
                                                 options={'fatol': 1e-4, 'maxfev': 40, 'fnorm': abs_norm, 'ftol': 0},
                                                 method='df-sane')
                 except FloatingPointError as e:
@@ -738,9 +752,10 @@ class MoleculeBlock(Molecule):
                                         " trying with hybr root finder")
                     # Second chance with another model
                     model = scipy.optimize.root(mol_obj.cost_function_2, mol_obj.v_hxc[site_id],
-                                                args=(mol_obj.embedded_mol_dict[block_size], h_tilde_dimer, u_0_dimer,
-                                                      mol_obj.n_ks[site_id], v_tilde), options={'eps': 0.01},
-                                                method='hybr')
+                                                args=(mol_obj.embedded_mol_dict[block_size], h_tilde_dimer,
+                                                      two_electron_interactions, mol_obj.n_ks[site_id], v_tilde,
+                                                      mol_obj.ab_initio),
+                                                options={'eps': 0.01}, method='hybr')
                 if not model.success or np.sum(np.square(model.fun)) > 1e-3:
                     general_logger.info("||| Didn't converge :c ")
                     root_finding_list_output = np.array(ROOT_FINDING_LIST_OUTPUT)
@@ -749,12 +764,12 @@ class MoleculeBlock(Molecule):
                     mask = weights > np.percentile(weights, 95)
                     final_approximation1 = np.average(root_finding_list_input[mask], axis=0, weights=weights[mask])
                     error1 = mol_obj.cost_function_2(final_approximation1, mol_obj.embedded_mol_dict[block_size],
-                                                     h_tilde_dimer, u_0_dimer,
-                                                     mol_obj.n_ks[site_id], v_tilde)
+                                                     h_tilde_dimer, two_electron_interactions,
+                                                     mol_obj.n_ks[site_id], v_tilde, mol_obj.ab_initio)
                     final_approximation2 = root_finding_list_input[weights.argsort()[::-1]][0]
                     error2 = mol_obj.cost_function_2(final_approximation2, mol_obj.embedded_mol_dict[block_size],
-                                                     h_tilde_dimer, u_0_dimer,
-                                                     mol_obj.n_ks[site_id], v_tilde)
+                                                     h_tilde_dimer, two_electron_interactions,
+                                                     mol_obj.n_ks[site_id], v_tilde, mol_obj.ab_initio)
                     if abs_norm(error2) > abs_norm(error1):
                         final_approximation = final_approximation1
                         final_error = error1
@@ -779,8 +794,9 @@ class MoleculeBlock(Molecule):
                 mu_imp_first = mu_imp[zero_index_in_block]
 
             mu_imp = mu_imp_first + mol_obj.v_hxc[site_id]
-            error_i = mol_obj.cost_function_2(mu_imp, mol_obj.embedded_mol_dict[block_size], h_tilde_dimer, u_0_dimer,
-                                              mol_obj.n_ks[site_id], v_tilde)
+            error_i = mol_obj.cost_function_2(mu_imp, mol_obj.embedded_mol_dict[block_size], h_tilde_dimer,
+                                              two_electron_interactions, mol_obj.n_ks[site_id], v_tilde,
+                                              mol_obj.ab_initio)
             general_logger.log(10, f"||| Higher accuary method gave error = {error_i} for mu_imp={mu_imp}")
             output_array_non_reduced[site_id] = error_i
 
@@ -789,21 +805,12 @@ class MoleculeBlock(Molecule):
                 output_array_non_reduced[eq_block] = error_i[index1]
 
             # energy contributions
-            one_rdm_c = mol_obj.embedded_mol_dict[block_size].one_rdm
-            two_rdm_c = mol_obj.embedded_mol_dict[block_size].build_2rdm_fh_on_site_repulsion(u_0_dimer)
-            for index, site in enumerate(site_id):
-                t_tilde_i = t_correct_indices.copy()
-                t_tilde_i[[i for i in range(mol_obj.Ns) if i != index]] = 0
-                t_tilde_i = (p @ t_tilde_i @ p)[:block_size * 2, :block_size * 2]
+            if mol_obj.ab_initio:
+                mol_obj.update_cluster_energy_qc(block_size, site_id, p)
+            else:
+                mol_obj.update_cluster_energy_fh(block_size, site_id, t_correct_indices, two_electron_interactions,
+                                                 p)
 
-                # essentials.print_matrix((t_tilde_i * one_rdm_c))
-                eq_block = find_equivalent_block(mol_obj, site)
-                mol_obj.kinetic_contributions[eq_block] = np.sum(t_tilde_i * one_rdm_c)
-                mol_obj.onsite_repulsion[eq_block] = two_rdm_c[index, index, index, index] * u_0_dimer[
-                    index, index, index, index]
-
-            # mol_obj.update_variables_embedded_block(v_tilde, h_tilde, site_group, mu_imp[one_site_id],
-            #                                         mol_obj.embedded_mol_dict[block_size], u_0_dimer)
             first_iteration = False
         if np.any(np.isnan(output_array_non_reduced)):
             raise Exception("Didn't cover all groups")
@@ -815,13 +822,64 @@ class MoleculeBlock(Molecule):
                 values_from_same_group = output_array_non_reduced[list(group_site_tuple)]
                 values_from_same_group = values_from_same_group[np.logical_not(np.isnan(values_from_same_group))]
                 output_array[group_id - 1] = np.mean(values_from_same_group)
-        max_dev = np.max(np.abs(output_array))
+        max_dev = np.max(np.abs(list(output_array) + [0]))
         general_logger.log(20,
                            f"| End of cost function 1: for input {''.join(['{num:{dec}}'.format(num=cell, dec='+10.3f') for cell in mol_obj.v_hxc])}"
                            f" error is {''.join(['{num:{dec}}'.format(num=cell, dec='+10.2e') for cell in output_array])} "
                            f" (max deviation = {max_dev})")
         mol_obj.optimize_progress_output.append(output_array.copy())
         return output_array
+
+    def update_cluster_energy_fh(self, block_size, site_id, t_correct_indices,
+                                 two_electron_interactions, p):
+        # energy contributions
+        one_rdm_c = self.embedded_mol_dict[block_size].one_rdm
+        two_rdm_c = self.embedded_mol_dict[block_size].build_2rdm_fh_on_site_repulsion(two_electron_interactions)
+        for index, site in enumerate(site_id):
+            t_tilde_i = t_correct_indices.copy()
+            t_tilde_i[[i for i in range(self.Ns) if i != index]] = 0
+            t_tilde_i = (p @ t_tilde_i @ p)[:block_size * 2, :block_size * 2]
+
+            # essentials.print_matrix((t_tilde_i * one_rdm_c))
+            eq_block = find_equivalent_block(self, site)
+            self.kinetic_contributions[eq_block] = np.sum(t_tilde_i * one_rdm_c)
+            self.onsite_repulsion[eq_block] = two_rdm_c[index, index, index, index] * two_electron_interactions[
+                index, index, index, index]
+
+    def update_cluster_energy_qc(self, block_size, site_id, p):
+        # energy contributions
+        one_rdm = self.embedded_mol_dict[block_size].one_rdm
+        two_rdm = self.embedded_mol_dict[block_size].build_2rdm_spin_free()
+        h_tilde = change_indices(self.h, site_id)
+        for index, site in enumerate(site_id):
+            h_tilde_i = h_tilde.copy()
+            h_tilde_i[[i for i in range(self.Ns) if i != index]] = 0
+            h_tilde_i = (p @ h_tilde_i @ p)[:block_size * 2, :block_size * 2]
+
+            g_tilde_i = self.transform_g_term(p, site_id, block_size, site)
+
+            eq_block = find_equivalent_block(self, site)
+            self.kinetic_contributions[eq_block] = np.sum(h_tilde_i * one_rdm)
+            self.onsite_repulsion[eq_block] = np.sum(g_tilde_i * two_rdm) / 2
+
+
+    def transform_g_term(self, p, site_id, impurity_size, only_one_site=None):
+
+        if only_one_site is None:
+            change_id = site_id
+        else:
+            change_id = only_one_site
+        g_term = np.zeros((self.Ns, self.Ns, self.Ns, self.Ns))
+        g_term[change_id, :, :, :] += self.g[change_id, :, :, :] / 4
+        g_term[:, change_id, :, :] += self.g[:, change_id, :, :] / 4
+        g_term[:, :, change_id, :] += self.g[:, :, change_id, :] / 4
+        g_term[:, :, :, change_id] += self.g[:, :, :, change_id] / 4
+
+        g_term = change_indices(g_term, site_id)
+        cluster_size = int(2 * impurity_size)
+        g_term = np.einsum('ip, jq, kr, ls, ijkl -> pqrs', p, p, p, p,
+                            g_term)[:cluster_size, :cluster_size, :cluster_size, :cluster_size]
+        return g_term
 
 
 class MoleculeBlockChemistry(MoleculeBlock):
@@ -831,14 +889,17 @@ class MoleculeBlockChemistry(MoleculeBlock):
         self.g = np.array([])
         self.ab_initio = True
 
-    def add_parameters(self, g, h, temp1=False, temp2=False):
+    def add_parameters(self, g, h, equivalent_atoms=None, temp2=False):
         if len(g) != self.Ns or len(h) != self.Ns:
             raise Exception(f"Problem with size of matrices: U={len(u)}, t={len(t)}, v_ext={len(v_ext)}")
         self.h = h
         self.g = g
         if not np.allclose(self.h, self.h.T):
             raise Exception("t matrix should have been symmetric")
-        equiv_atom_group_list = cangen(t, np.round(np.sum(self.g, axis=(1, 2, 3)), 3))
+        if equivalent_atoms is None:
+            equiv_atom_group_list = cangen(self.h, np.round(np.sum(self.g, axis=(1, 2, 3)), 3))
+        else:
+            equiv_atom_group_list = equivalent_atoms
         general_logger.info(f'Equivalent atoms: {equiv_atom_group_list}')
         self.equiv_atom_groups = []
         for index, item in enumerate(equiv_atom_group_list):
