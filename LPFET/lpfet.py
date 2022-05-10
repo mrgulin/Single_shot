@@ -426,6 +426,7 @@ class Molecule(MoleculeBare):
         self.optimize_progress_input = []
         self.optimize_progress_output = []
         self.block_hh = False  # Variable that will be checked to see if algorithm should do single impurity or not.
+        self.v_ext = np.zeros(self.Ns)
 
     def find_solution_as_root(self, starting_approximation=None):
         if starting_approximation is None:
@@ -438,10 +439,14 @@ class Molecule(MoleculeBare):
         elif len(starting_approximation) != len(self.equiv_site_helper_list) - 1:
             raise Exception(f'Wrong length of the starting approximation: len(starting_approximation) != '
                             f'len(eq_atom) - 1 ({len(starting_approximation)} != {len(self.equiv_site_helper_list) - 1}')
-        general_logger.log(25, f'starting to to optimization of Hxc potentials, '
+        general_logger.log(25, f'start of optimization of Hxc potentials, '
                                f'starting approximation = {starting_approximation}')
         self.optimize_progress_output = []
         self.optimize_progress_input = []
+        if len(starting_approximation) == 0:
+            self.cost_function_whole([], self)
+            general_logger.log(25, 'All atoms are equivalent therefore, delta v_hxc = 0 for all sites')
+            return []
         model = scipy.optimize.root(self.cost_function_whole, starting_approximation,
                                     args=(self,), options={'fatol': 1e-2, "maxfev": ROOT_LPFET_SOLVER_MAX_ITER,
                                                            'fnorm': abs_norm, 'ftol': 0, "M": 30},
@@ -453,9 +458,9 @@ class Molecule(MoleculeBare):
             weights = np.sqrt(np.sum(np.square(1 / (optimize_progress_output + 1e-5)), axis=1))
             mask = weights > np.percentile(weights, 95)
             final_approximation1 = np.average(optimize_progress_input[mask], axis=0, weights=weights[mask])
-            error1 = opt_function(final_approximation1, self)
+            error1 = self.cost_function_whole(final_approximation1, self)
             final_approximation2 = optimize_progress_input[weights.argsort()[::-1]][0]
-            error2 = opt_function(final_approximation2, self)
+            error2 = self.cost_function_whole(final_approximation2, self)
             if abs_norm(error2) > abs_norm(error1):
                 final_approximation = final_approximation1
                 final_error = error1
