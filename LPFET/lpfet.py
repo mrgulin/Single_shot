@@ -392,7 +392,7 @@ class MoleculeBare:
         self.v_hxc_progress = []
 
     @staticmethod
-    def cost_function_2(mu_imp, embedded_mol, h_tilde_dimer, u_0_dimer, desired_density, v_tilde):
+    def cost_function_2(mu_imp, embedded_mol, h_tilde_dimer, two_e_int, desired_density, v_tilde, ab_initio=False):
             # mu_imp = mu_imp[0]
             global ITERATION_NUM, ROOT_FINDING_LIST_INPUT, ROOT_FINDING_LIST_OUTPUT
             cluster_size = h_tilde_dimer.shape[0]
@@ -400,7 +400,10 @@ class MoleculeBare:
             ITERATION_NUM += 1
             mu_imp_array = np.zeros((cluster_size, cluster_size))
             mu_imp_array[half_diagonal, half_diagonal] = mu_imp
-            embedded_mol.build_hamiltonian_fermi_hubbard(h_tilde_dimer - mu_imp_array, u_0_dimer, v_term=v_tilde)
+            if ab_initio:
+                embedded_mol.build_hamiltonian_quantum_chemistry(h_tilde_dimer - mu_imp_array, two_e_int)
+            else:
+                embedded_mol.build_hamiltonian_fermi_hubbard(h_tilde_dimer - mu_imp_array, two_e_int, v_term=v_tilde)
             embedded_mol.diagonalize_hamiltonian()
             density_dimer = embedded_mol.calculate_1rdm_spin_free(index=0)
             result = density_dimer[half_diagonal, half_diagonal] - desired_density
@@ -412,7 +415,8 @@ class MoleculeBare:
                 ROOT_FINDING_LIST_OUTPUT.append([result])
 
             general_logger.log(5,
-                               f"|||| cost function 2: Input: {mu_imp}; Output: {result}; desired density: {desired_density}")
+                               f"|||| cost function 2: Input: {mu_imp}; Output: {result}; "
+                               f"desired density: {desired_density}; ab-initio: {ab_initio}")
             return result
 
 
