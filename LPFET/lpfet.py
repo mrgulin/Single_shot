@@ -626,6 +626,9 @@ class MoleculeBlock(Molecule):
         self.equiv_atoms_in_block = []  # This 2d list is important so we know which atoms have the same impurity
         # potentials. This list is important because we have to optimize len(..) - 1 Hxc potentials
 
+        self.h = np.array([])
+        self.g = np.array([])
+
     def prepare_for_block(self, blocks: typing.List[typing.List[int]]):
         n_blocks = len(blocks)
         if 0 not in blocks[0]:
