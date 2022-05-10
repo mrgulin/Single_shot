@@ -39,6 +39,12 @@ np.errstate(all='raise')
 np.set_printoptions(linewidth=np.inf)
 
 
+def householder_transformation(matrix, fragment_size=1):
+    if fragment_size == 1:
+        return qnb.tools.householder_transformation(matrix)
+    else:
+        return qnb.tools.block_householder_transformation(matrix, fragment_size)
+
 def abs_norm(x):
     return np.max(np.abs(x))
 
