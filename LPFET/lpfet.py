@@ -221,7 +221,10 @@ class MoleculeBare:
 
     def calculate_ks(self, prevent_extreme_values=False):
         self.v_s = self.v_hxc + self.v_ext
-        self.h_ks = self.t + np.diag(self.v_s)
+        if self.ab_initio:
+            self.h_ks = self.h + np.diag(self.v_s)
+        else:
+            self.h_ks = self.t + np.diag(self.v_s)
         try:
             self.epsilon_s, self.wf_ks = np.linalg.eigh(self.h_ks, 'U')
         except np.linalg.LinAlgError as e:
