@@ -92,6 +92,14 @@ def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecul
         general_logger.info(f'{i:.1f}, {i / max(x) * 100:.1f}%: ')
         nodes_dict, edges_dict = model_function(i_param, n_sites, u_param)
         t, v_ext, u = lpfet.generate_from_graph(nodes_dict, edges_dict)
+        # sw_id = 2
+        # t[[sw_id, 1]] = t[[1, sw_id]]
+        # t[:, [sw_id, 1]] = t[:, [1, sw_id]]
+        # v_ext[[sw_id, 1]] = v_ext[[1, sw_id]]
+        # u[[sw_id, 1]] = u[[1, sw_id]]
+        # essentials.print_matrix(t)
+        # print(v_ext)
+        # print(u)
         mol1.report_string = f'Object with {n_sites} sites and {n_electron} electrons\n'
         with open(f"{folder_name}systems.txt", "a") as my_file:
             my_file.write(f"\n\n{repr(t)}\n{repr(v_ext)}\n{repr(u)}")
@@ -118,7 +126,8 @@ def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecul
         mol1.calculate_energy(False)
         time3 = datetime.now()
         first = False
-        correction_dict_list.append(mol1.oscillation_correction_dict)
+        if hasattr(mol1, 'oscillation_correction_dict'):
+            correction_dict_list.append(mol1.oscillation_correction_dict)
         y.append(mol1.density_progress)
         y_simple.append(mol1.n_ks)
         y_ab, mol_fci, energy_ref_i, energy_ref_per_site_i = mol1.compare_densities_fci(pass_object=mol_full,
@@ -216,9 +225,10 @@ def calculate_graphs(folder_name, x, y, y_ref, y_simple, energy, energy_ref, v_h
             plt.plot(np.arange(len(regime)) + 1, regime[:, site_id], color=mpl.cm.tab10(site_id),
                      label=f'site{site_id}')
 
-        for key1 in correction_dict_list[x_i].keys():
-            iter_key, site_key = key1
-            plt.scatter([iter_key + 1], [regime[iter_key, site_key]], c='r', s=20)
+        if len(correction_dict_list) > 0:
+            for key1 in correction_dict_list[x_i].keys():
+                iter_key, site_key = key1
+                plt.scatter([iter_key + 1], [regime[iter_key, site_key]], c='r', s=20)
 
         plt.xlabel("Iteration number")
         plt.ylabel("occupation")
