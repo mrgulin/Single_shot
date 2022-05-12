@@ -58,8 +58,9 @@ def generate_chain1(i, n_sites, U_param):
     """
     nodes_dict = dict()
     edges_dict = dict()
+    minimum = (n_sites - 1)/2
     for j in range(n_sites):
-        nodes_dict[j] = {'v': (j - 2.5) * i, 'U': U_param}
+        nodes_dict[j] = {'v': (j - minimum) * i, 'U': U_param}
         if j != n_sites - 1:
             edges_dict[(j, j + 1)] = 1
     return nodes_dict, edges_dict
