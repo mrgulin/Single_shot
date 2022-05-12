@@ -278,7 +278,7 @@ def calculate_graphs(folder_name, x, y, y_ref, y_simple, energy, energy_ref, v_h
 
     # plot occupations
     fig, ax = plt.subplots(1, 1, figsize=(7, 4))
-    for i in range(6):
+    for i in range(len(y_simple[0])):
         plt.plot(x, y_simple[:, i], c=mpl.cm.get_cmap('tab10')(i), label=str(i))
         plt.plot(x, y_ref[:, i], c=mpl.cm.get_cmap('tab10')(i), label=str(i) + '-ref', linestyle='--')
     plt.xlabel(x_label)
@@ -297,7 +297,7 @@ def calculate_graphs(folder_name, x, y, y_ref, y_simple, energy, energy_ref, v_h
     fig, ax = plt.subplots(1, 1, figsize=(7, 4))
     v_hxc_simple = np.array([j[-1] for j in v_hxc_progression_list])
     v_hxc_simple += (np.average(v_hxc_ref_progress, axis=1) - np.average(v_hxc_simple, axis=1)[np.newaxis]).T
-    for i in range(6):
+    for i in range(len(v_hxc_simple[0])):
         plt.plot(x, v_hxc_simple[:, i], c=mpl.cm.get_cmap('tab10')(i), label=str(i))
         plt.plot(x, v_hxc_ref_progress[:, i], c=mpl.cm.get_cmap('tab10')(i), label=str(i) + '-ref', linestyle='--')
     plt.xlabel(x_label)
@@ -316,7 +316,7 @@ def calculate_graphs(folder_name, x, y, y_ref, y_simple, energy, energy_ref, v_h
     fig.tight_layout()
     plt.xlabel(x_label)
     ax.set_ylabel('Error energy')
-    for site in range(6):
+    for site in range(len(y_simple[0])):
         ax.plot(x, e_per_site[:, site]['tot'] - e_ref_per_site[:, site]['tot'], c=mpl.cm.get_cmap('tab10')(site),
                 label=f'deviation on site {site}')
     fig.legend(loc='center left', bbox_to_anchor=(1, 0.5))
