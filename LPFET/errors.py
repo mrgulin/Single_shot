@@ -45,7 +45,7 @@ class EmptyFullOrbitalError(Exception):
 
     def __init__(self, n_ks, value, custom_message=''):
         if not custom_message:
-            self.message = f"Error: KS density son some site is {value} which is too close {roud(value[0]):.0f}" \
+            self.message = f"Error: KS density son some site is {value} which is too close {round(value[0]):.0f}" \
                            f" (densities: {n_ks})\n"
         else:
             self.message = custom_message
