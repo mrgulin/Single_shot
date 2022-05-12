@@ -13,6 +13,7 @@ general_handler = logging.FileHandler('general_batch.log', mode='w')
 general_handler.setFormatter(logging.Formatter('%(levelname)6s %(lineno)4s %(asctime)s: %(message)s',
                                                "%Y-%m-%d %H:%M:%S"))
 stream_handler = logging.StreamHandler()
+stream_handler.setLevel(5)
 
 general_logger = logging.getLogger(__name__)
 general_logger.setLevel(logging.INFO)
