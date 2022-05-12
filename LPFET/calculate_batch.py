@@ -21,7 +21,7 @@ general_logger.addHandler(general_handler)
 general_logger.addHandler(stream_handler)
 
 def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecule_name, u_param=None, i_param=None,
-                   delta_x=None, max_value=None, r_param=None, force=True, blocks=None):
+                   delta_x=None, max_value=None, r_param=None, force=True, blocks=None, calculate_progress=False):
     start_iter = lpfet.ITERATION_NUM
     name = molecule_name
     if u_param is not None and i_param is not None:
@@ -54,8 +54,10 @@ def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecul
         if os.path.isfile(folder_name + "/Energy_errors_per_site.svg") or os.path.isfile(folder_name + 'skipped.txt'):
             general_logger.info(f"THERE IS ALREADY DATA in folder {folder_name}. FUNCTION WILL EXIT.")
             return 0
-
-    mol1 = lpfet.Molecule(n_sites, n_electron, name)
+    if blocks is not None:
+        mol1 = lpfet.MoleculeBlock(n_sites, n_electron, name)
+    else:
+        mol1 = lpfet.Molecule(n_sites, n_electron, name)
     mol_full = lpfet.class_qnb.HamiltonianV2(n_sites, n_electron)
     mol_full.build_operator_a_dagger_a()
     y = []
@@ -159,7 +161,8 @@ def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecul
         conn.close()
         return np.array(time_list)
     calculate_graphs(folder_name, x_true, y, y_ref, y_simple, energy, energy_ref, v_hxc_progression_list,
-                     correction_dict_list, energy_per_site, energy_ref_per_site, v_hxc_ref_progress, x_label)
+                     correction_dict_list, energy_per_site, energy_ref_per_site, v_hxc_ref_progress, x_label,
+                     calculate_progress)
     time_list = np.array(time_list)
     general_logger.info(f"\n  t_root      t_e    t_fci  t_v_hxc\n{essentials.print_matrix(time_list, ret=True)}")
     general_logger.info(f"time spent for making graphs: {(datetime.now() - time_before_graphs).total_seconds()}")
@@ -171,7 +174,7 @@ def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecul
 # noinspection PyTypeChecker
 def calculate_graphs(folder_name, x, y, y_ref, y_simple, energy, energy_ref, v_hxc_progression_list,
                      correction_dict_list, energy_per_site, energy_ref_per_site, v_hxc_ref_progress,
-                     x_label='i (v_ext)'):
+                     x_label='i (v_ext)', calculate_progress=False):
     for i in range(len(y)):
         y[i] = np.array(y[i], dtype=float)
     y_ref = np.array(y_ref)
@@ -200,47 +203,48 @@ def calculate_graphs(folder_name, x, y, y_ref, y_simple, energy, energy_ref, v_h
     # Because np.savetxt can be done only on 2d array we reshape array into 2d array that has each row
     # [tot1, kin1, v_ext1, u1, tot2, kin2, ..... , v_extn, un]
 
-    # plot v_hxc progression
-    for x_i, v_ext in enumerate(x):
-        fig, ax = plt.subplots(1, 1, figsize=(7, 4))
-        regime = np.array(v_hxc_progression_list[x_i])
-        for site_id in range(6):
-            plt.plot(np.arange(len(regime)) + 1, regime[:, site_id], color=mpl.cm.tab10(site_id),
-                     label=f'site{site_id}')
+    if calculate_progress:
+        # plot v_hxc progression
+        for x_i, v_ext in enumerate(x):
+            fig, ax = plt.subplots(1, 1, figsize=(7, 4))
+            regime = np.array(v_hxc_progression_list[x_i])
+            for site_id in range(len(regime[0])):
+                plt.plot(np.arange(len(regime)) + 1, regime[:, site_id], color=mpl.cm.tab10(site_id),
+                         label=f'site{site_id}')
 
-        plt.xlabel("Iteration number")
-        plt.ylabel("v_hxc")
-        plt.title(f'v_xhc progression at regime with {x_label}={v_ext:.3f}')
-        box = ax.get_position()
-        ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
-        ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-        # plt.savefig(f'{folder_name}/v_hxc/progression-{x_i}.png', dpi=150, bbox_inches='tight')
-        plt.savefig(f'{folder_name}/v_hxc/progression-{x_i}.svg', dpi=150, bbox_inches='tight')
-        plt.close(fig)
+            plt.xlabel("Iteration number")
+            plt.ylabel("v_hxc")
+            plt.title(f'v_xhc progression at regime with {x_label}={v_ext:.3f}')
+            box = ax.get_position()
+            ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
+            ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+            # plt.savefig(f'{folder_name}/v_hxc/progression-{x_i}.png', dpi=150, bbox_inches='tight')
+            plt.savefig(f'{folder_name}/v_hxc/progression-{x_i}.svg', dpi=150, bbox_inches='tight')
+            plt.close(fig)
 
-    # plot occupation progression
-    for x_i, v_ext in enumerate(x):
-        fig, ax = plt.subplots(1, 1, figsize=(7, 4))
-        regime = np.array(y[x_i])
-        for site_id in range(6):
-            plt.plot(np.arange(len(regime)) + 1, regime[:, site_id], color=mpl.cm.tab10(site_id),
-                     label=f'site{site_id}')
+        # plot occupation progression
+        for x_i, v_ext in enumerate(x):
+            fig, ax = plt.subplots(1, 1, figsize=(7, 4))
+            regime = np.array(y[x_i])
+            for site_id in range(len(regime[0])):
+                plt.plot(np.arange(len(regime)) + 1, regime[:, site_id], color=mpl.cm.tab10(site_id),
+                         label=f'site{site_id}')
 
-        if len(correction_dict_list) > 0:
-            for key1 in correction_dict_list[x_i].keys():
-                iter_key, site_key = key1
-                plt.scatter([iter_key + 1], [regime[iter_key, site_key]], c='r', s=20)
+            if len(correction_dict_list) > 0:
+                for key1 in correction_dict_list[x_i].keys():
+                    iter_key, site_key = key1
+                    plt.scatter([iter_key + 1], [regime[iter_key, site_key]], c='r', s=20)
 
-        plt.xlabel("Iteration number")
-        plt.ylabel("occupation")
-        plt.title(f'occupation progression at regime with {x_label}={v_ext:.3f}')
-        box = ax.get_position()
-        ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
-        ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-        ax.set_ylim(0, 2)
-        # plt.savefig(f'{folder_name}/occupation/progression_{x_i}.png', dpi=150, bbox_inches='tight')
-        plt.savefig(f'{folder_name}/occupation/progression_{x_i}.svg', dpi=150, bbox_inches='tight')
-        plt.close(fig)
+            plt.xlabel("Iteration number")
+            plt.ylabel("occupation")
+            plt.title(f'occupation progression at regime with {x_label}={v_ext:.3f}')
+            box = ax.get_position()
+            ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
+            ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+            ax.set_ylim(0, 2)
+            # plt.savefig(f'{folder_name}/occupation/progression_{x_i}.png', dpi=150, bbox_inches='tight')
+            plt.savefig(f'{folder_name}/occupation/progression_{x_i}.svg', dpi=150, bbox_inches='tight')
+            plt.close(fig)
 
     # plot energy contributions
     fig, ax = plt.subplots(2, 1, figsize=(6, 6), sharex='all', gridspec_kw={'height_ratios': [3, 1]})
