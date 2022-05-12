@@ -240,7 +240,7 @@ class MoleculeBare:
         self.n_ks = np.copy(self.y_a.diagonal())
 
         if prevent_extreme_values:
-            min_distance_from_extremes = 1e-3
+            min_distance_from_extremes = 1e-4
             # In LPFET we don't want to have either fully occupied impurities or fully empty site because then non of
             # the chemical impurity potential will be able to match density from KS-DFT. for fully occupied orbital and
             # mu_imp == 50 we get occupation 1.99984983. 1e-3 is around 30% higher so this should solve the problem
