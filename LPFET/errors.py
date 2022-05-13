@@ -50,3 +50,22 @@ class EmptyFullOrbitalError(Exception):
         else:
             self.message = custom_message
         super().__init__(self.message)
+
+
+class InversionClusterError(Exception):
+    """Exception raised when KS density is either 0 or 2.
+
+    Attributes:
+        n_ks -- vector of densities
+        value -- wrong value
+        message -- custom message to overwrite error message
+    """
+
+    def __init__(self, h_tilde_dimer, desired_density, final_error, custom_message=''):
+        if not custom_message:
+            self.message = f'Inversion of a cluster did not succeed' \
+                           f'\n{essentials.print_matrix(h_tilde_dimer, ret=True)}\n' \
+                           f'Desired density: {desired_density}\n best guess error was: {final_error}'
+        else:
+            self.message = custom_message
+        super().__init__(self.message)

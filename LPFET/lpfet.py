@@ -786,9 +786,7 @@ class MoleculeBlock(Molecule):
                         model.success = True
                         model.x = final_approximation
                     else:
-                        raise Exception(f'Inversion of a cluster did not succeed'
-                                        f'\n{essentials.print_matrix(h_tilde_dimer, ret=True)}\n'
-                                        f'Desired density: {mol_obj.n_ks[site_id]}\n best guess error was: {final_error}')
+                        raise errors.InversionClusterError(h_tilde_dimer, mol_obj.n_ks[site_id], final_error)
                 zero_index_in_block = list(site_id).index(0)
                 mu_imp = model.x
                 mu_imp_first = mu_imp[zero_index_in_block]
@@ -845,6 +843,7 @@ class MoleculeBlock(Molecule):
             self.kinetic_contributions[eq_block] = np.sum(t_tilde_i * one_rdm_c)
             self.onsite_repulsion[eq_block] = two_rdm_c[index, index, index, index] * two_electron_interactions[
                 index, index, index, index]
+
 
     def update_cluster_energy_qc(self, block_size, site_id, p):
         # energy contributions

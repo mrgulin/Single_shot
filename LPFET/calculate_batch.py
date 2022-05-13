@@ -124,6 +124,10 @@ def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecul
         except lpfet.errors.EmptyFullOrbitalError as e:
             general_logger.info('Created KS densities were either full or empty --> skipping this system.\n', e, '--end--')
             continue
+        except lpfet.errors.InversionClusterError as e:
+            general_logger.info('Finding a correct impurity potentials failed.\n', e,
+                                '--end--')
+            continue
         time2 = datetime.now()
         # mol1.optimize_solution(5, 0.2)
         mol1.calculate_energy(False)
@@ -136,7 +140,18 @@ def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecul
         y_ab, mol_fci, energy_ref_i, energy_ref_per_site_i = mol1.compare_densities_fci(pass_object=mol_full,
                                                                                         calculate_per_site=True)
         time4 = datetime.now()
-        v_hxc_correct = mol_fci.calculate_v_hxc(mol1.v_hxc)
+        try:
+            v_hxc_correct = mol_fci.calculate_v_hxc(mol1.v_hxc)
+            if type(v_hxc_correct) == bool:
+                general_logger.info("Couldn't calculate correct v_hxc")
+                v_hxc_ref_progress.append(np.zeros(n_sites) * np.nan)
+            else:
+                general_logger.info(f'correct v_hxc: {v_hxc_correct}')
+                v_hxc_ref_progress.append(v_hxc_correct.copy())
+        except FloatingPointError as e:
+            general_logger.info('unable to calculate Hxc potential (some norm is 0).\n', e,
+                                '--end--')
+            v_hxc_ref_progress.append(np.zeros(n_sites) * np.nan)
         time5 = datetime.now()
         if type(v_hxc_correct) == bool:
             general_logger.info("Couldn't calculate correct v_hxc")
