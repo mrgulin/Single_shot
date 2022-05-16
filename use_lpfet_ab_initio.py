@@ -28,6 +28,7 @@ N_MO = 8
 N_elec = 4
 blocks = [[0, 1], [2, 3], [4, 5], [6, 7]]
 eq_sites = [[0, 6], [2, 4], [1, 7], [3, 5]]
+name = r'C:\Users\tinc9\Documents\CNRS-offline\internship_project\results\H4-chain_6-31G/'
 MAX_ROOT = 15
 elem = 0
 dim_parameter = len(list_theta)
@@ -97,8 +98,7 @@ for theta in tqdm(list_theta, file=sys.stdout):
     # my_mol.prepare_for_block([[2 * i, 2 * i + 1] for i in range(N_MO//2)])
     my_mol.prepare_for_block(blocks)
     my_mol.ab_initio = True
-    my_mol.find_solution_as_root(old_approximation)
-    old_approximation = [my_mol.v_hxc[i[0]] for i in eq_sites if i[0] != 0]
+    old_approximation = my_mol.find_solution_as_root(old_approximation)
     E_lpfet.append(my_mol.calculate_energy() + nuc_rep)
     progress['E_1rdm_lpfet'].append(my_mol.energy_contributions[1])
     progress['E_2rdm_lpfet'].append(my_mol.energy_contributions[3])
@@ -121,11 +121,14 @@ progress['y_fci'] = np.array(progress['y_fci'])
 
 plt.plot(list_theta[:len(E_lpfet)], E_lpfet, label='lpfet', linestyle='dashed')
 plt.plot(list_theta[:len(E_FCI)], E_FCI, label='ref', c='k')
-plt.plot(list_theta[:len(E_FCI_QNB)], E_FCI_QNB, label='qnb_fci', linestyle='dashed')
+# plt.plot(list_theta[:len(E_FCI_QNB)], E_FCI_QNB, label='qnb_fci', linestyle='dashed')
 plt.plot(list_theta[:len(E_HF)], E_HF, label='HF', linestyle='dashed')
 plt.legend()
 plt.ylim(top=2)
+plt.savefig(f'{name}disociation_curve.png', dpi=150, bbox_inches='tight')
+plt.savefig(f'{name}disociation_curve.svg', dpi=150, bbox_inches='tight')
 plt.show()
+
 plt.plot(list_theta, np.array(progress['E_1rdm_lpfet']) - np.array(progress['E_1rdm']),
          label='one electron interaction error')
 plt.plot(list_theta, np.array(progress['E_2rdm_lpfet']) - np.array(progress['E_2rdm']),
@@ -134,7 +137,8 @@ plt.plot(list_theta, np.array(progress['E_2rdm_lpfet']) - np.array(progress['E_2
          label='two electron interaction error')
 plt.axhline(0, linestyle='--', color='k', linewidth=0.8)
 plt.legend()
-plt.title('minimal basis set H-ring 6 sites stretching n_impurity=3')
+plt.savefig(f'{name}contribution_errors.png', dpi=150, bbox_inches='tight')
+plt.savefig(f'{name}contribution_errors.svg', dpi=150, bbox_inches='tight')
 plt.show()
 
 
@@ -142,6 +146,8 @@ plt.plot(list_theta, E_lpfet - E_FCI, label='lpfet')
 plt.plot(list_theta, E_FCI_QNB - E_FCI, label='qnb_fci')
 plt.plot(list_theta, E_HF - E_FCI, label='HF')
 plt.legend()
+plt.savefig(f'{name}relative_errors.png', dpi=150, bbox_inches='tight')
+plt.savefig(f'{name}relative_errors.svg', dpi=150, bbox_inches='tight')
 plt.show()
 
 
@@ -150,6 +156,3 @@ progress['E_2rdm'], progress['E_2rdm_lpfet'], *[[j[i, i] for j in progress['y_fc
                                            *[[j[i, i] for j in progress['y_lpfet']] for i in
                                                    range(len(progress['y_lpfet'][0]))]
                                            ]).T, header='E_FCI, E_FCI_QNB, E_HF, E_lpfet, E_1rdm, E_1rdm_lpfet, E_2rdm, E_2rdm_lpfet, N*n_fci, N*N_lpfet')
-progress = {'y_fci': [], 'y_lpfet': [], 'E_1rdm': [], 'E_2rdm': [], 'E_1rdm_lpfet': [], 'E_2rdm_lpfet': []}
-
-print(*[[j[i] for j in c] for i in range(len(c[0]))])
