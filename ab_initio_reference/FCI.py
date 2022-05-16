@@ -32,7 +32,10 @@ H 0 0 0
 H 0 1.1 0
 symmetry c1
 """
-def calculate_reference(structure, basis='6-31G'):
+def calculate_reference(structure, basis='6-31G', use_hf_orbitals=False):
+    if 'symmetry' not in structure:
+        structure += '\nsymmetry c1'
+
     mol = psi4.geometry(structure)
 
 
@@ -48,7 +51,7 @@ def calculate_reference(structure, basis='6-31G'):
     scf_e, wfn = psi4.energy('SCF', return_wfn=True)
 
     # Grab data from wavfunction class
-    # C = wfn.Ca()
+    C_HF = wfn.Ca()
     ndocc = wfn.doccpi()[0]
     nmo = wfn.nmo()
 
@@ -80,17 +83,19 @@ def calculate_reference(structure, basis='6-31G'):
     print("Symmetric orthogonalization matrix")
     print(symm_orthog)
 
-    H = np.asarray(mints.ao_kinetic()) + np.asarray(mints.ao_potential())
+    H_ao = np.asarray(mints.ao_kinetic()) + np.asarray(mints.ao_potential())
     print('\nTotal time taken for ERI integrals: %.3f seconds.\n' % (time.time() - t))
 
     #Make spin-orbital MO
     print('Starting AO -> spin-orbital MO transformation...')
     t = time.time()
     C_matrix = psi4.core.Matrix.from_array([C], 'symmetric orthogonalization')
-    MO = np.asarray(mints.mo_spin_eri(C_matrix, C_matrix))
+    MO = np.asarray(mints.mo_spin_eri(C_HF, C_HF))
+    # MO = np.asarray(mints.mo_spin_eri(C_matrix, C_matrix))
+
     # Update H, transform to MO basis and tile for alpha/beta spin
-    H = np.einsum('uj,vi,uv', C, C, H)
-    h = H.copy()
+    H = np.einsum('uj,vi,uv', C_HF, C_HF, H_ao)
+
     H = np.repeat(H, 2, axis=0)
     H = np.repeat(H, 2, axis=1)
     g2 = mints.ao_eri()
@@ -137,6 +142,12 @@ def calculate_reference(structure, basis='6-31G'):
     print('FCI correlation:    % 16.10f' % (fci_mol_e - scf_e))
     print('Total FCI energy:   % 16.10f' % (fci_mol_e))
     # psi4.compare_values(psi4.energy('FCI'), fci_mol_e, 6, 'FCI Energy')
+    if use_hf_orbitals:
+        h = np.einsum('uj,vi,uv', C_HF, C_HF, H_ao)
+        g = np.einsum('pi, qj, rk, sl, ijkl', C_HF, C_HF, C_HF, C_HF, g2)
+        C = C_HF
+    else:
+        h = np.einsum('uj,vi,uv', C, C, H_ao)
     return {'h': h, 'g': np.asarray(g), 'nuc_rep': mol.nuclear_repulsion_energy(), 'HF': scf_e,
             'wave_function': wavefunctions, 'det_list': detList, 'eig_val': e_fci,
            'H': np.asarray(Hamiltonian_matrix), 'C': C, 'FCI': fci_mol_e}

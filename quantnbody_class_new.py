@@ -209,9 +209,12 @@ class HamiltonianV2(qnb.Hamiltonian):
             raise Exception('diagonalization of Hamiltonian didnt happen yet')
         self.calculate_1rdm_spin_free() / 2
         occupations = self.one_rdm.diagonal() / 2
-        model = scipy.optimize.root(cost_function_v_hxc, starting_approximation,
-                                    args=(occupations, self.h, self.n_electron),
-                                    options={'fatol': 1e-5}, method='df-sane')
+        try:
+            model = scipy.optimize.root(cost_function_v_hxc, starting_approximation,
+                                        args=(occupations, self.h, self.n_electron),
+                                        options={'fatol': 1e-5}, method='df-sane')
+        except FloatingPointError as e:
+            raise FloatingPointError(f"Hxc potential couldn't be found\n{self.h}") from e
         if not model.success or np.sum(np.square(model.fun)) > solution_classification_tolerance:
             return False
         energy_fci = self.eig_values[0]

@@ -153,12 +153,6 @@ def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecul
                                 '--end--')
             v_hxc_ref_progress.append(np.zeros(n_sites) * np.nan)
         time5 = datetime.now()
-        if type(v_hxc_correct) == bool:
-            general_logger.info("Couldn't calculate correct v_hxc")
-            v_hxc_ref_progress.append(np.zeros(n_sites) * np.nan)
-        else:
-            general_logger.info(f'correct v_hxc: {v_hxc_correct}')
-            v_hxc_ref_progress.append(v_hxc_correct.copy())
         energy_per_site.append(mol1.per_site_energy)
         energy_ref_per_site.append(energy_ref_per_site_i)
         y_ref.append(y_ab.diagonal())
@@ -169,6 +163,8 @@ def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecul
         time_list.append([(time2-time1).total_seconds(), (time3-time2).total_seconds(), (time4-time3).total_seconds(),
                           (time5-time4).total_seconds()])
         x_true.append(i)
+    if not len(x_true) == len(y_ref) == len(y_simple):
+        raise Exception('not equal lengths!!!!!', len(x_true), len(y_ref), len(y_simple))
     time_before_graphs = datetime.now()
     if len(y) == 0:
         conn = open(folder_name + 'skipped.txt', 'w')

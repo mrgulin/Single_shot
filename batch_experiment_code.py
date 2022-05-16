@@ -30,7 +30,12 @@ import results.create_list
 # time_l = generate_trend(6, 10, essentials.generate_complete1, 'complete1', i_param=3)
 
 
-generate_trend(6, 6, essentials.generate_chain1, 'chain1-times2', i_param=1)
+
+
+# generate_trend(8, 8, essentials.generate_chain1, '8-chain1', i_param=1, max_value=10, delta_x=0.2)
+for n_electron in [2, 4, 6, 8, 10, 12, 14]:
+    generate_trend(8, n_electron, essentials.generate_chain1, '8-chain1-NNI-0.2', i_param=1, max_value=10, delta_x=0.5,
+                   r_param=0.2)
 
 
 results.create_list.update_list()

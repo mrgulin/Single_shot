@@ -412,7 +412,10 @@ class MoleculeBare:
                 ROOT_FINDING_LIST_OUTPUT.append(result.copy())
             else:
                 ROOT_FINDING_LIST_INPUT.append([mu_imp])
-                ROOT_FINDING_LIST_OUTPUT.append([result])
+                if hasattr(result, '__setattr__'):
+                    ROOT_FINDING_LIST_OUTPUT.append(result)
+                else:
+                    ROOT_FINDING_LIST_OUTPUT.append([result])
 
             general_logger.log(5,
                                f"|||| cost function 2: Input: {mu_imp}; Output: {result}; "
@@ -499,13 +502,13 @@ class Molecule(MoleculeBare):
         # self.imp_potential[self.blocks[site_group]] = mu_imp
         # But now we see that there is a problem with the sites and blocks :c
 
-    def transform_v_term(self, p, site_id, calculate_one_site=-1):
+    def transform_v_term(self, p, site_id, calculate_one_site=None):
         if isinstance(site_id, (int, np.int32, np.int64)):
             site_id = [site_id]
         impurity_size = len(site_id)
         if self.v_term is not None:
             v_term = np.zeros((self.Ns, self.Ns))
-            if calculate_one_site == -1:
+            if calculate_one_site is None:
                 change_id_obj = site_id
             else:
                 change_id_obj = calculate_one_site
@@ -514,13 +517,10 @@ class Molecule(MoleculeBare):
             if site_id == list(range(impurity_size)):
                 v_term_correct_indices = v_term
             else:
-                mask = np.arange(self.Ns)
-                mask[range(impurity_size)] = site_id
-                mask[site_id] = range(impurity_size)
-                v_term_correct_indices = v_term[:, mask][mask, :]
-            v_tilde = np.einsum('ip, iq, jr, js, ij -> pqrs', p, p, p, p,
-                                v_term_correct_indices)[:2 * impurity_size, :2 * impurity_size, :2 * impurity_size,
-                      :2 * impurity_size]
+                v_term_correct_indices = change_indices(v_term, site_id)
+            p_trunc = p[:, :2 * impurity_size]
+            v_tilde = np.einsum('ip, iq, jr, js, ij -> pqrs', p_trunc, p_trunc, p_trunc, p_trunc,
+                                v_term_correct_indices)
         else:
             v_tilde = None
         return v_tilde
@@ -692,7 +692,7 @@ class MoleculeBlock(Molecule):
         temp1 = ''.join([f'{cell:+10.3f}' for cell in mol_obj.v_hxc])
         general_logger.log(15, f"| Start of cost function 1: Input = {temp1}")
         mol_obj.v_hxc_progress.append(mol_obj.v_hxc)
-        mol_obj.calculate_ks()
+        mol_obj.calculate_ks(prevent_extreme_values=True)
         mol_obj.density_progress.append(mol_obj.n_ks)
         output_array_non_reduced = np.zeros(mol_obj.Ns, float) * np.nan
         output_array = np.zeros(len(mol_obj.equiv_atom_groups) - 1, float) * np.nan
@@ -786,6 +786,7 @@ class MoleculeBlock(Molecule):
                         model.success = True
                         model.x = final_approximation
                     else:
+                        print(ROOT_FINDING_LIST_INPUT)
                         raise errors.InversionClusterError(h_tilde_dimer, mol_obj.n_ks[site_id], final_error)
                 zero_index_in_block = list(site_id).index(0)
                 mu_imp = model.x
@@ -834,6 +835,15 @@ class MoleculeBlock(Molecule):
         one_rdm_c = self.embedded_mol_dict[block_size].one_rdm
         two_rdm_c = self.embedded_mol_dict[block_size].build_2rdm_fh_on_site_repulsion(two_electron_interactions)
         for index, site in enumerate(site_id):
+
+            if self.v_term is not None:
+                v_tilde = self.transform_v_term(p, site_id, site)
+                two_rdm_v_term = self.embedded_mol_dict[block_size].build_2rdm_fh_dipolar_interactions(v_tilde)
+                v_term_repulsion_i = np.sum(two_rdm_v_term * v_tilde)
+            else:
+                v_term_repulsion_i = 0
+            self.v_term_repulsion[site] = v_term_repulsion_i
+
             t_tilde_i = t_correct_indices.copy()
             t_tilde_i[[i for i in range(self.Ns) if i != index]] = 0
             t_tilde_i = (p @ t_tilde_i @ p)[:block_size * 2, :block_size * 2]
