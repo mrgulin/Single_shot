@@ -28,7 +28,7 @@ class HouseholderTransformationError(Exception):
     def __init__(self, one_rdm, custom_message=''):
         if not custom_message:
             self.message = f"Error: couldn't create Householder transformation for a given 1RDM. 1RDM:\n"
-            self.message += essentials.print_matrix(one_rdm)
+            self.message += essentials.print_matrix(one_rdm, ret=True)
         else:
             self.message = custom_message
         super().__init__(self.message)
