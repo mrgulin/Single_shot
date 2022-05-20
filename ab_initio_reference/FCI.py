@@ -148,6 +148,7 @@ def calculate_reference(structure, basis='6-31G', use_hf_orbitals=False):
         C = C_HF
     else:
         h = np.einsum('uj,vi,uv', C, C, H_ao)
+
     return {'h': h, 'g': np.asarray(g), 'nuc_rep': mol.nuclear_repulsion_energy(), 'HF': scf_e,
-            'wave_function': wavefunctions, 'det_list': detList, 'eig_val': e_fci,
+            'wave_function': wavefunctions, 'det_list': detList, 'eig_val': fci_mol_e - mol.nuclear_repulsion_energy(),
            'H': np.asarray(Hamiltonian_matrix), 'C': C, 'FCI': fci_mol_e}
