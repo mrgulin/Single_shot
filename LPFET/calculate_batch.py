@@ -87,10 +87,10 @@ def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecul
             i_param = i
             x_label = 'i (delta v_ext)'
         if not first:
-            approx_len = len(mol1.equiv_atom_groups) - 1
-            starting_approximation_c_hxc = np.zeros(approx_len)
-            for ind in range(approx_len):
-                starting_approximation_c_hxc[ind] = old_v_hxc[mol1.equiv_atom_groups[ind + 1][0]]
+            # approx_len = len(mol1.equiv_atom_groups) - 1
+            # starting_approximation_c_hxc = np.zeros(approx_len)
+            # for ind in range(approx_len):
+            #     starting_approximation_c_hxc[ind] = old_v_hxc[mol1.equiv_atom_groups[ind + 1][0]]
             mol1.clear_object(name)
         general_logger.info(f'{i:.1f}, {i / max(x) * 100:.1f}%: ')
         nodes_dict, edges_dict = model_function(i_param, n_sites, u_param)
@@ -109,12 +109,12 @@ def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecul
         mol1.add_parameters(u, t, v_ext, r_param)
         if blocks is not None:
             mol1.prepare_for_block(blocks)
-        if len(mol1.equiv_atom_groups) - 1 != approx_len:
+        if starting_approximation_c_hxc is not None and len(mol1.equiv_atom_groups) != len(starting_approximation_c_hxc):
             starting_approximation_c_hxc = None
         time1 = datetime.now()
         # mol1.self_consistent_loop(num_iter=50, tolerance=1E-6, oscillation_compensation=[5, 1], v_hxc_0=0)
         try:
-            mol1.find_solution_as_root(starting_approximation_c_hxc)
+            starting_approximation_c_hxc = mol1.find_solution_as_root(starting_approximation_c_hxc)
         except lpfet.errors.DegeneratedStatesError as e:
             general_logger.info('Degenerated energy levels --> skipping this system.\n', e, '--end--')
             continue
