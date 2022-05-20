@@ -120,21 +120,21 @@ def calculate_reference(structure, basis='6-31G', use_hf_orbitals=False):
     print('..finished generating determinants in %.3f seconds.\n' % (time.time() - t))
 
     print('Generating Hamiltonian Matrix...')
-
-    t = time.time()
-    Hamiltonian_generator = HamiltonianGenerator(H, MO)
-    Hamiltonian_matrix = Hamiltonian_generator.generateMatrix(detList)
-
-    print('..finished generating Matrix in %.3f seconds.\n' % (time.time() - t))
-
-    print('Diagonalizing Hamiltonian Matrix...')
-
-    t = time.time()
-
-    e_fci, wavefunctions = np.linalg.eigh(Hamiltonian_matrix)
-    print('..finished diagonalization in %.3f seconds.\n' % (time.time() - t))
-
-    fci_mol_e = e_fci[0] + mol.nuclear_repulsion_energy()
+    wavefunctions = False
+    Hamiltonian_matrix = []
+    # t = time.time()
+    # Hamiltonian_generator = HamiltonianGenerator(H, MO)
+    # Hamiltonian_matrix = Hamiltonian_generator.generateMatrix(detList)
+    #
+    # print('..finished generating Matrix in %.3f seconds.\n' % (time.time() - t))
+    #
+    # print('Diagonalizing Hamiltonian Matrix...')
+    #
+    # t = time.time()
+    #
+    # e_fci, wavefunctions = np.linalg.eigh(Hamiltonian_matrix)
+    # print('..finished diagonalization in %.3f seconds.\n' % (time.time() - t))
+    fci_mol_e = psi4.energy('FCI')  # e_fci[0] + mol.nuclear_repulsion_energy()
 
     print('# Determinants:     % 16d' % (len(detList)))
 
