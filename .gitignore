@@ -137,6 +137,8 @@ results/
 LPFET_homogeneous/results
 results_sc/
 Trash/
+thesis_graphs/
+results_ab_initio/
 
 # exe files and dll files
 *.exe
