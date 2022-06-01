@@ -59,10 +59,6 @@ def householder_transformation(matrix, fragment_size=1):
     return p, r
 
 
-if np.any(np.isnan(p)):
-    raise errors.HouseholderTransformationError(y_a_correct_imp)
-
-
 def abs_norm(x):
     return np.max(np.abs(x))
 
@@ -408,7 +404,7 @@ class Molecule:
 
             return y_ab, mol_full, (total_energy, kinetic_contribution, v_ext_contribution,
                                     u_contribution, v_term_contribution), per_site_array
-        general_logger.info("FCI densities (per spin):", densities)
+        general_logger.info(f"FCI densities (per spin):{densities}")
         general_logger.info(f'FCI energy: {mol_full.eig_values[0]}')
         return y_ab, mol_full, (total_energy, kinetic_contribution, v_ext_contribution,
                                 u_contribution, 0), np.array([])
@@ -508,6 +504,9 @@ class Molecule:
                                                            'ftol': 0, "M": 30},
                                     method='df-sane')
         # region Additional tries if original method fails
+        if not model.success:
+            general_logger.warning(f'Model was not successful! message:\n{model}\nTrying with another solver')
+            model = scipy.optimize.root(self.cost_function_whole, model.x, args=(self,))  # another algorithm
         optimize_progress_output = np.array(self.optimize_progress_output)
         optimize_progress_input = np.array(self.optimize_progress_input)
         if not model.success or np.sum(np.square(model.fun)) > 0.01:
@@ -604,6 +603,7 @@ class Molecule:
         because this function is meant for the optimizer, the first argument has to be X.
         :return: Error vector or <Psi^i|n_i|Psi^i> - <Phi|n_i|Phi>
         """
+        mol_obj.optimize_progress_input.append(v_hxc_approximation.copy())
         mol_obj.v_hxc = np.zeros(mol_obj.Ns, float)
         mu_imp_first = v_hxc_approximation[0]
         for group_id, group_site_tuple in enumerate(mol_obj.equiv_atom_groups):
@@ -613,7 +613,7 @@ class Molecule:
                 else:
                     mol_obj.v_hxc[site_id_i] = 0
         mol_obj.v_hxc_progress.append(mol_obj.v_hxc)
-        mol_obj.calculate_ks(True)
+        mol_obj.calculate_ks(False)
         mol_obj.density_progress.append(mol_obj.n_ks)
         output_array = np.zeros(len(mol_obj.equiv_atom_groups), float)
         output_index = 0  # For the writing in the output array
@@ -638,6 +638,9 @@ class Molecule:
         general_logger.info(
             f"for input {''.join(['{num:{dec}}'.format(num=cell, dec='+10.2e') for cell in mol_obj.v_hxc])} error is"
             f" {''.join(['{num:{dec}}'.format(num=cell, dec='+10.2e') for cell in output_array])} (RMS = {rms})")
+        mol_obj.optimize_progress_output.append(output_array.copy())
+        if np.sqrt(np.sum(np.square(output_array))) < 1e-10:
+            return output_array * 0
         return output_array
 
 
@@ -779,9 +782,10 @@ class MoleculeBlock(Molecule):
                 else:
                     mol_obj.v_hxc[site_id_i] = 0
         str_starting_v_hxc = ''.join([f'{cell:+10.3f}' for cell in mol_obj.v_hxc[1:]])
-        general_logger.log(15, f"| Start of cost function 1: μ={mol_obj.v_hxc[0]:+10.3f}, v_hxc = {str_starting_v_hxc}")
+        general_logger.log(15, f"| Start of cost function 1: μ={v_hxc_approximation[0]:+10.3f},"
+                               f" v_hxc = {str_starting_v_hxc}")
         mol_obj.v_hxc_progress.append(mol_obj.v_hxc)
-        mol_obj.calculate_ks(prevent_extreme_values=True)
+        mol_obj.calculate_ks(prevent_extreme_values=False)
         mol_obj.density_progress.append(mol_obj.n_ks)
         output_array_non_reduced = np.zeros(mol_obj.Ns, float) * np.nan
         output_array = np.zeros(len(mol_obj.equiv_atoms_in_block), float) * np.nan
@@ -790,6 +794,7 @@ class MoleculeBlock(Molecule):
         for site_group, group_tuple in enumerate(mol_obj.equiv_block_groups):
             block_id = group_tuple[0]
             site_id = mol_obj.blocks[block_id]
+            block_size = len(site_id)
 
             general_logger.log(10, f"|| Site id: {site_id}")
             y_a_correct_imp = change_indices(mol_obj.y_a, site_id)
@@ -817,7 +822,7 @@ class MoleculeBlock(Molecule):
             output_array_non_reduced[site_id] = error_i
 
             for index1, one_site_id in enumerate(site_id):
-                output_array[[one_site_id in i for i in my_mol.equiv_atoms_in_block].index(True)] = error_i[index1]
+                output_array[[one_site_id in i for i in mol_obj.equiv_atoms_in_block].index(True)] = error_i[index1]
                 # Point is to get on which index of equiv_atoms_in_block is each site and write error_i to it
 
             # energy contributions
@@ -834,6 +839,12 @@ class MoleculeBlock(Molecule):
                 f" (max deviation = {max_dev})")
         mol_obj.optimize_progress_output.append(output_array.copy())
         return output_array
+
+    @staticmethod
+    def cost_function_whole_minimize(v_hxc_approximation: np.array, mol_obj: 'MoleculeBlock'):
+        ret_vec = mol_obj.cost_function_whole(v_hxc_approximation, mol_obj)
+        ret_vec = np.sum(np.square(ret_vec))
+        return ret_vec
 
     def update_cluster_energy_fh(self, site_id, t_correct_indices,
                                  two_electron_interactions, p):
@@ -906,11 +917,17 @@ class MoleculeBlock(Molecule):
             change_id = site_id
         else:
             change_id = only_one_site
-        g_term = np.zeros((self.Ns, self.Ns, self.Ns, self.Ns))
-        g_term[change_id, :, :, :] += self.g[change_id, :, :, :] / 4
-        g_term[:, change_id, :, :] += self.g[:, change_id, :, :] / 4
-        g_term[:, :, change_id, :] += self.g[:, :, change_id, :] / 4
-        g_term[:, :, :, change_id] += self.g[:, :, :, change_id] / 4
+        type1 = 'NIB'  # For future if some day we want to change to IB
+        if only_one_site is None and type1 != 'NIB':
+            g_term = self.g.copy()
+            print("IB")
+        else:
+            print("NIB")
+            g_term = np.zeros((self.Ns, self.Ns, self.Ns, self.Ns))
+            g_term[change_id, :, :, :] += self.g[change_id, :, :, :] / 4
+            g_term[:, change_id, :, :] += self.g[:, change_id, :, :] / 4
+            g_term[:, :, change_id, :] += self.g[:, :, change_id, :] / 4
+            g_term[:, :, :, change_id] += self.g[:, :, :, change_id] / 4
 
         g_term = change_indices(g_term, site_id)
         cluster_size = int(2 * impurity_size)
