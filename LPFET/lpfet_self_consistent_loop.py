@@ -1,4 +1,4 @@
-from LPFET.lpfet import MoleculeBare
+from LPFET.lpfet import Molecule
 
 COMPENSATION_1_RATIO = 0.5  # for the Molecule.update_v_hxc
 COMPENSATION_MAX_ITER_HISTORY = 4
@@ -6,7 +6,7 @@ COMPENSATION_5_FACTOR = 1
 COMPENSATION_5_FACTOR2 = 0.5
 
 
-class MoleculeSCL(MoleculeBare):
+class MoleculeSCL(Molecule):
     def __init__(self):
         super().__init__(site_number, electron_number, description)
         self.embedded_mol_dict = dict()
