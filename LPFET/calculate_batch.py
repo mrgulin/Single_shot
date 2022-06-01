@@ -116,17 +116,16 @@ def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecul
         try:
             starting_approximation_c_hxc = mol1.find_solution_as_root(starting_approximation_c_hxc)
         except lpfet.errors.DegeneratedStatesError as e:
-            general_logger.info('Degenerated energy levels --> skipping this system.\n', e, '--end--')
+            general_logger.info(f'Degenerated energy levels --> skipping this system.\n{str(e)}\n--end--')
             continue
         except lpfet.errors.HouseholderTransformationError as e:
-            general_logger.info('Unable to calculate Householder transformation --> skipping this system.\n', e, '--end--')
+            general_logger.info(f'Unable to calculate Householder transformation --> skipping this system{str(e)}\n--end--')
             continue
         except lpfet.errors.EmptyFullOrbitalError as e:
-            general_logger.info('Created KS densities were either full or empty --> skipping this system.\n', e, '--end--')
+            general_logger.info(f'Created KS densities were either full or empty --> skipping this system.\n{str(e)}\n--end--')
             continue
         except lpfet.errors.InversionClusterError as e:
-            general_logger.info('Finding a correct impurity potentials failed.\n', e,
-                                '--end--')
+            general_logger.info(f'Finding a correct impurity potentials failed.\n{str(e)}\n--end--')
             continue
         time2 = datetime.now()
         # mol1.optimize_solution(5, 0.2)
