@@ -31,11 +31,16 @@ general_logger.addHandler(stream_handler)
 ROOT_FINDING_LIST_INPUT = []  # All inputs for the cluster correlated wave function calculations
 ROOT_FINDING_LIST_OUTPUT = []  # All outputs for the cluster correlated wave function calculations
 ITERATION_NUM = 0
+ACTIVE_SPACE_CALCULATION = False
+INTERACTING_BATH = False
 
 ROOT_LPFET_SOLVER_MAX_ITER = 100
 np.seterr(all='raise')
 np.errstate(all='raise')
 np.set_printoptions(linewidth=np.inf)  # no breaking of lines when printing np.arrays
+
+ITER_NUM_ROOT = 0
+FUN_ERROR_END = 0
 
 
 def householder_transformation(matrix, fragment_size=1):
@@ -57,6 +62,132 @@ def householder_transformation(matrix, fragment_size=1):
     if np.any(np.isnan(p)):
         raise errors.HouseholderTransformationError(y_a_correct_imp)
     return p, r
+
+
+def get_active_space_integrals_fh_v_term(two_body_integrals,
+                                         occupied_indices=None,
+                                         active_indices=None):
+    occupied_indices = [] if occupied_indices is None else occupied_indices
+    if len(active_indices) < 1:
+        raise ValueError('Some active indices required for reduction.')
+
+    # Determine core constant
+    core_constant = 0.0
+    for i in occupied_indices:
+        for j in occupied_indices:
+            core_constant += 2 * 2 * two_body_integrals[i, i, j, j]
+            core_constant += 2 * two_body_integrals[i, j, j, i]
+
+    # Modified one electron integrals
+    one_body_integrals_new = np.zeros(two_body_integrals.shape[:2])
+    for u in active_indices:
+        for i in occupied_indices:
+            # one_body_integrals_new += two_body_integrals[i, u, u, i]
+            for v in active_indices:
+                one_body_integrals_new[u, v] += 2 * two_body_integrals[i, i, u, v]
+                one_body_integrals_new[u, v] += 2 * two_body_integrals[u, v, i, i]
+                one_body_integrals_new[u, v] -= two_body_integrals[i, v, u, i]
+
+                # Restrict integral ranges and change M appropriately
+    return (core_constant,
+            one_body_integrals_new[np.ix_(active_indices, active_indices)],
+            two_body_integrals[np.ix_(active_indices, active_indices, active_indices, active_indices)])
+
+
+def fh_get_active_space_integrals(h_, U_, frozen_indices=None, active_indices=None):
+    """
+    Restricts a Fermi-Hubbard at a spatial orbital level to an active space
+    This active space may be defined by a list of active indices and
+    doubly occupied indices. Note that one_body_integrals and
+    two_body_integrals must be defined in an orthonormal basis set (MO like).
+    Args:
+         - occupied_indices: A list of spatial orbital indices
+           indicating which orbitals should be considered doubly occupied.
+         - active_indices: A list of spatial orbital indices indicating
+           which orbitals should be considered active.
+         - 1 and 2 body integrals.
+    Returns:
+        tuple: Tuple with the following entries:
+        **core_constant**: Adjustment to constant shift in Hamiltonian
+        from integrating out core orbitals
+        **one_body_integrals_new**: one-electron integrals over active space.
+        **two_body_integrals_new**: two-electron integrals over active space.
+    """
+    # Determine core Energy from frozen MOs
+    core_energy = 0
+    for i in frozen_indices:
+        # core_energy += 2 * h_[i, i]
+        for j in frozen_indices:
+            core_energy += U_[i, i, j, j]
+
+    # Modified one-electron integrals
+    h_act = h_.copy()
+    for t in active_indices:
+        for u in active_indices:
+            for i in frozen_indices:
+                h_act[t, u] += U_[i, i, t, u]
+
+    return (core_energy,
+            h_act[np.ix_(active_indices, active_indices)],
+            U_[np.ix_(active_indices, active_indices, active_indices, active_indices)])
+
+
+def calculate_integrals(mol_obj, site_id, p, two_e_interactions, V=None):
+    # Storing the cluster orbitals ( will be used as an active space )
+    N_MO_cluster = 2 * len(site_id)
+    N_elec_env = mol_obj.Ne - N_MO_cluster
+    if N_elec_env < 0:
+        raise Exception(f"Problem with the number of electrons! Not enough electrons in the environment ({N_elec_env})")
+    if N_elec_env > 2 * (p.shape[0] - N_MO_cluster):
+        raise Exception(f"Problem with the number of electrons! Too many electrons in the environment ({N_elec_env})")
+    C_cluster_active = p[:, 0:N_MO_cluster]
+
+    # Evaluating the environment MOs
+    # (A) Doubly occupied MOs in the environment
+    C_occ_env = np.zeros((p.shape[0], N_elec_env // 2))
+    C_occ = mol_obj.wf_ks.copy()
+    C_occ[:, (mol_obj.Ne//2):] = 0
+    Sub_block_env = (2 * p.T @ C_occ @ C_occ.T @ p)[N_MO_cluster:,
+                    N_MO_cluster:]  # Subblock for the local environement orbitals
+    Nat_occ, Nat_orb = np.linalg.eigh(Sub_block_env)  # Evaluating the assocaited natural orbitals
+    C_occ_env[N_MO_cluster:, :] = np.fliplr(Nat_orb)[:, 0:N_elec_env // 2]  # Expressed the latter in the Householder basis
+    C_occ_env = p @ C_occ_env  # We express the Env. occ. MOs in the local OAO basis
+
+    # # (B) Virtual MOs in the environment
+    C_virt_env = np.zeros((p.shape[0], p.shape[1] - N_elec_env // 2 - N_MO_cluster))
+    C_virt_env[N_MO_cluster:, :] = np.fliplr(Nat_orb)[:, N_elec_env // 2:]
+    C_virt_env = p @ C_virt_env
+
+    # Building the effective MO coefficient matrix for the active space problem
+    C_ht = np.block([C_occ_env, C_cluster_active, C_virt_env])
+
+    # two_e_interactions = np.zeros((mol_obj.Ns, mol_obj.Ns, mol_obj.Ns, mol_obj.Ns))
+    # two_e_interactions[range(mol_obj.Ns), range(mol_obj.Ns), range(mol_obj.Ns), range(mol_obj.Ns)] = mol_obj.u
+    frozen_indices = list(np.arange(C_occ_env.shape[1]))
+    active_indices = list(np.arange(C_cluster_active.shape[1]) + C_occ_env.shape[1])
+    if mol_obj.ab_initio:
+        two_e_int_tilde = mol_obj.transform_g_term(C_ht, site_id, bath_type='IB', return_whole=True)
+        h_tilde_cas = C_ht.T @ (change_indices(mol_obj.h, site_id) + np.diag(change_indices(mol_obj.v_s, site_id))) @ C_ht
+        ret = qnb.tools.qc_get_active_space_integrals(h_tilde_cas, two_e_int_tilde, frozen_indices, active_indices)
+        core_energy, h_tilde_as, u_dimer_as = ret
+        v_dimer_as = None
+    else:
+        two_e_int_tilde = np.einsum('ip, jq, kr, ls, ijkl', C_ht, C_ht, C_ht, C_ht, two_e_interactions)
+        h_tilde_cas = C_ht.T @ (change_indices(mol_obj.t, site_id) + np.diag(change_indices(mol_obj.v_s,
+                                                                                            site_id))) @ C_ht
+        ret = fh_get_active_space_integrals(h_tilde_cas, two_e_int_tilde, frozen_indices, active_indices)
+        core_energy, h_tilde_as, u_dimer_as = ret
+        if V is None:
+            v_dimer_as = None
+        else:
+
+            V = mol_obj.transform_v_term(C_ht, site_id, return_whole=True)
+            ret = get_active_space_integrals_fh_v_term(V, list(np.arange(C_occ_env.shape[1])),
+                                                       list(np.arange(C_cluster_active.shape[1]) + C_occ_env.shape[1]))
+            core_energy2, h_tilde_as2, v_dimer_as = ret
+            core_energy += core_energy2
+            h_tilde_as += h_tilde_as2
+    return core_energy, h_tilde_as, u_dimer_as, v_dimer_as
 
 
 def abs_norm(x):
@@ -499,17 +630,14 @@ class Molecule:
         self.optimize_progress_output = []
         self.optimize_progress_input = []
         # Optimization algorithm
-        model = scipy.optimize.root(self.cost_function_whole, starting_approximation,
-                                    args=(self,), options={'fatol': 1e-4, "maxfev": ROOT_LPFET_SOLVER_MAX_ITER,
-                                                           'ftol': 0, "M": 30},
-                                    method='df-sane')
+        model = scipy.optimize.root(self.cost_function_whole,starting_approximation, args=(self,), options={'maxfev': 100})
         # region Additional tries if original method fails
         if not model.success:
             general_logger.warning(f'Model was not successful! message:\n{model}\nTrying with another solver')
             model = scipy.optimize.root(self.cost_function_whole, model.x, args=(self,))  # another algorithm
         optimize_progress_output = np.array(self.optimize_progress_output)
         optimize_progress_input = np.array(self.optimize_progress_input)
-        if not model.success or np.sum(np.square(model.fun)) > 0.01:
+        if not model.success or np.sum(np.square(model.fun)) > 0.001:
 
             weights = np.sqrt(np.sum(np.square(1 / (optimize_progress_output + 1e-5)), axis=1))
             mask = weights > np.percentile(weights, 95)
@@ -532,6 +660,9 @@ class Molecule:
         v_hxc = model.x
         general_logger.log(25, f"Optimized: nfev = {model.nfev}, fun = {model.fun}, x = {model.x}")
         general_logger.info(model)
+        global ITER_NUM_ROOT, FUN_ERROR_END
+        ITER_NUM_ROOT = model.nfev
+        FUN_ERROR_END = model.fun
         return v_hxc
 
     def update_variables_embedded(self, v_tilde, h_tilde, site_group, mu_imp, embedded_mol, u_0_dimer=None):
@@ -561,10 +692,11 @@ class Molecule:
         # self.imp_potential[self.blocks[site_group]] = mu_imp
         # But now we see that there is a problem with the sites and blocks :c
 
-    def transform_v_term(self, p, site_id, calculate_one_site=None):
+    def transform_v_term(self, p, site_id, calculate_one_site=None, return_whole=False):
         """
         This method takes only interactions corresponding to an impurity and transforms 2D self.v_term into 4D array
         representing interactions in Householder representation.
+        :param return_whole: If True than the whole Ns * Ns * Ns * Ns tensor is returned and not only truncated one
         :param p: Householder matrix corresponding to site_id
         :param site_id: array or integer of the site.
         :param calculate_one_site: This is used for calculating per-site energy where we need only one one site
@@ -586,7 +718,10 @@ class Molecule:
                 v_term_correct_indices = v_term
             else:
                 v_term_correct_indices = change_indices(v_term, site_id)
-            p_trunc = p[:, :2 * impurity_size]
+            if return_whole:
+                p_trunc = p
+            else:
+                p_trunc = p[:, :2 * impurity_size]
             v_tilde = np.einsum('ip, iq, jr, js, ij -> pqrs', p_trunc, p_trunc, p_trunc, p_trunc,
                                 v_term_correct_indices)
         else:
@@ -807,14 +942,26 @@ class MoleculeBlock(Molecule):
             else:
                 t_correct_indices = change_indices(mol_obj.t, site_id)
                 h_tilde = p @ (t_correct_indices + np.diag(change_indices(mol_obj.v_s, site_id))) @ p
-                v_tilde = mol_obj.transform_v_term(p, site_id)
-                u_0_dimer = np.zeros((block_size * 2, block_size * 2, block_size * 2, block_size * 2), dtype=np.float64)
+                v_tilde = mol_obj.transform_v_term(p, site_id, return_whole=ACTIVE_SPACE_CALCULATION)
+                if ACTIVE_SPACE_CALCULATION:
+                    u_0_dimer = np.zeros((mol_obj.Ns, mol_obj.Ns, mol_obj.Ns, mol_obj.Ns), dtype=np.float64)
+                else:
+                    u_0_dimer = np.zeros((block_size * 2, block_size * 2, block_size * 2, block_size * 2),
+                                         dtype=np.float64)
                 range1 = np.arange(len(site_id))
                 u_0_dimer[range1, range1, range1, range1] += mol_obj.u[site_id]
                 two_electron_interactions = u_0_dimer
             h_tilde_dimer = h_tilde[:block_size * 2, :block_size * 2]
 
             mu_imp = mu_imp_first + mol_obj.v_hxc[site_id]
+            # h_tilde_dimer_old = h_tilde_dimer.copy()
+            # two_electron_interactions_old = two_electron_interactions.copy()
+            # v_tilde_old = v_tilde.copy()
+            if ACTIVE_SPACE_CALCULATION:
+                ret = calculate_integrals(mol_obj, site_id, p, two_electron_interactions, V=True)
+                core_energy, h_tilde_dimer, two_electron_interactions, v_tilde = ret
+                if core_energy != 0:
+                    print("CORE ENERGY: ", core_energy)
             error_i = mol_obj.cost_function_2(mu_imp, mol_obj.embedded_mol_dict[block_size], h_tilde_dimer,
                                               two_electron_interactions, mol_obj.n_ks[site_id], v_tilde,
                                               mol_obj.ab_initio)
@@ -902,10 +1049,12 @@ class MoleculeBlock(Molecule):
             self.kinetic_contributions[eq_block] = np.sum(h_tilde_i * one_rdm)
             self.onsite_repulsion[eq_block] = np.sum(g_tilde_i * two_rdm) / 2
 
-    def transform_g_term(self, p, site_id, only_one_site=None):
+    def transform_g_term(self, p, site_id, only_one_site=None, bath_type='NIB', return_whole=False):
         """
         Method that takes 2-electron integrals in site representation and it creates integrals in Householder
         representation (taking only part that is related to the sites in the fragment).
+        :param bath_type: NIB for non-interacting bath or IB for interacting bath
+        :param return_whole: True if non-truncated g integral matrix is required
         :param p: Householder transformation matrix
         :param site_id: list of fragments
         :param only_one_site: when calculating contributions for the per-site energies this is used to take
@@ -917,8 +1066,7 @@ class MoleculeBlock(Molecule):
             change_id = site_id
         else:
             change_id = only_one_site
-        type1 = 'NIB'  # For future if some day we want to change to IB
-        if only_one_site is None and type1 != 'NIB':
+        if only_one_site is None and bath_type != 'NIB':
             g_term = self.g.copy()
             print("IB")
         else:
@@ -930,9 +1078,11 @@ class MoleculeBlock(Molecule):
             g_term[:, :, :, change_id] += self.g[:, :, :, change_id] / 4
 
         g_term = change_indices(g_term, site_id)
-        cluster_size = int(2 * impurity_size)
-        g_term = np.einsum('ip, jq, kr, ls, ijkl -> pqrs', p, p, p, p,
-                           g_term)[:cluster_size, :cluster_size, :cluster_size, :cluster_size]
+        if return_whole:
+            p_trunc = p
+        else:
+            p_trunc = p[:, :int(2 * impurity_size)]
+        g_term = np.einsum('ip, jq, kr, ls, ijkl -> pqrs', p_trunc, p_trunc, p_trunc, p_trunc, g_term)
         return g_term
 
 

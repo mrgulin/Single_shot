@@ -91,10 +91,9 @@ print(eig_energies[:5])
  # %%
 
 
-def v_term_get_active_space_integrals(one_body_integrals,
-                                      two_body_integrals,
-                                      occupied_indices=None,
-                                      active_indices=None):
+def get_active_space_integrals_fh_v_term(two_body_integrals,
+                                         occupied_indices=None,
+                                         active_indices=None):
     occupied_indices = [] if occupied_indices is None else occupied_indices
     if len(active_indices) < 1:
         raise ValueError('Some active indices required for reduction.')
@@ -107,7 +106,7 @@ def v_term_get_active_space_integrals(one_body_integrals,
             core_constant += 2 * two_body_integrals[i, j, j, i]
 
     # Modified one electron integrals
-    one_body_integrals_new = np.zeros(one_body_integrals.shape)
+    one_body_integrals_new = np.zeros(two_body_integrals.shape[:2])
     for u in active_indices:
         for i in occupied_indices:
             # one_body_integrals_new += two_body_integrals[i, u, u, i]
@@ -121,7 +120,8 @@ def v_term_get_active_space_integrals(one_body_integrals,
             one_body_integrals_new[np.ix_(active_indices, active_indices)],
             two_body_integrals[np.ix_(active_indices, active_indices, active_indices, active_indices)])
 
-core_energy_v, h_eff_v, v_term_act = v_term_get_active_space_integrals(h_, V_, occupied_indices=frozen_indices, active_indices=active_indices)
+core_energy_v, h_eff_v, v_term_act = get_active_space_integrals_fh_v_term(V_, occupied_indices=frozen_indices,
+                                                                          active_indices=active_indices)
 
 Core_energy, h_eff, U_act = qnb.tools.fh_get_active_space_integrals(h_,
                                                                        U_,
@@ -135,30 +135,3 @@ eig_energies_, eig_vectors_ = scipy.sparse.linalg.eigsh(mol_as.H, k=4, which='SA
 AS_energy = Core_energy + eig_energies_[0] + core_energy_v
 print(EXACT_GS_energy , AS_energy, -EXACT_GS_energy + AS_energy, EXACT_GS_energy_no_v)
 print(111111)
-
-# def v_term_get_active_space_integrals(one_body_integrals,
-#                                       two_body_integrals,
-#                                       occupied_indices=None,
-#                                       active_indices=None):
-#     occupied_indices = [] if occupied_indices is None else occupied_indices
-#     if len(active_indices) < 1:
-#         raise ValueError('Some active indices required for reduction.')
-#
-#     # Determine core constant
-#     core_constant = 0.0
-#     for i in occupied_indices:
-#         core_constant += 2 * one_body_integrals[i, i]
-#         for j in occupied_indices:
-#             core_constant += 2 * two_body_integrals[i, i, j, j]
-#
-#     # Modified one electron integrals
-#     one_body_integrals_new = np.zeros(one_body_integrals)
-#     for u in active_indices:
-#         for v in active_indices:
-#             for i in occupied_indices:
-#                 one_body_integrals_new[u, v] += 2 * two_body_integrals[i, i, u, v]
-#
-#     # Restrict integral ranges and change M appropriately
-#     return (core_constant,
-#             one_body_integrals_new[np.ix_(active_indices, active_indices)],
-#             two_body_integrals[np.ix_(active_indices, active_indices, active_indices, active_indices)])

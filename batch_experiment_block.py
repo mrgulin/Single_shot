@@ -23,9 +23,13 @@ import results.create_list
 #                blocks=[[0, 1], [2, 3], [4, 5], [6, 7]], r_param=0.2)
 # generate_trend(8, 8, essentials.generate_chain1, '8-chain1_block-2_NNI-0.2', u_param=8,
 #                blocks=[[0, 1], [2, 3], [4, 5], [6, 7]], r_param=0.2)
-generate_trend(8, 8, essentials.generate_chain1, '8-chain1_block-2_NNI-0.2', u_param=8,
-               blocks=[[0, 1], [2, 3], [4, 5], [6, 7]], r_param=0.2, delta_x=0.01, max_value=0.2)
-
+# generate_trend(8, 8, essentials.generate_chain1, '8-chain1_block-2_NNI-0.2', u_param=8,
+#                blocks=[[0, 1], [2, 3], [4, 5], [6, 7]], r_param=0.2, delta_x=0.01, max_value=0.2)
+lpfet.ACTIVE_SPACE_CALCULATION = True
+generate_trend(8, 8, essentials.generate_chain1, '8-chain1_block-2_NNI-0.2_AS', u_param=8,
+               blocks=[[0, 1], [2, 3], [4, 5], [6, 7]], r_param=0.2)
+# generate_trend(8, 8, essentials.generate_chain1, '8-chain1_NNI-0.2', u_param=8,
+#                r_param=0.2)
 
 print('iterations: ', lpfet.ITERATION_NUM)
 
