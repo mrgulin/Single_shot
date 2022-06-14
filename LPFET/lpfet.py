@@ -347,10 +347,10 @@ class Molecule:
         self.imp_potential = np.zeros(self.Ns, dtype=np.float64)
 
         # Energy
-        self.kinetic_contributions = np.zeros(self.Ns, dtype=np.float64)
+        self.kinetic_contributions = np.zeros((), dtype=np.float64)
         # This is where \hat t^{(i)} are going to be written
-        self.onsite_repulsion = np.zeros(self.Ns, dtype=np.float64)
-        self.v_term_repulsion = np.zeros(self.Ns, dtype=np.float64)
+        self.onsite_repulsion = np.zeros((), dtype=np.float64)
+        self.v_term_repulsion = np.zeros((), dtype=np.float64)
         self.energy_contributions = tuple()
         self.per_site_energy = np.array(())
 
@@ -363,15 +363,27 @@ class Molecule:
         self.iteration_i = 0
 
         self.ab_initio = False
-        self.block_hh = False  # Variable that will be checked to see if algorithm should do single impurity or not.
-
         self.optimize_progress_input = []  # variables that save progression of the calculation
         self.optimize_progress_output = []
 
+        # self.block_hh = True
+        self.embedded_mol_dict = dict()
+        self.blocks = []  # This 2d list tells us which sites are merged into which clusters [[c0s0, c0s1,..],[c1s0...]]
+        self.equiv_block_groups = []  # This 2d list tells us which blocks are equivalent. [0, 1], [2]] means that first
+        # block is same as second and 3rd is different
+        self.equiv_atoms_in_block = []  # This 2d list is important so we know which atoms have the same impurity
+        # potentials. This list is important because we have to optimize len(..) - 1 Hxc potentials
+
+        self.h = np.array([])  # Ready for ab-initio Hamiltonian
+        self.g = np.array([])
+
     def add_parameters(self, u, t, v_ext,
-                       v_term_repulsion_ratio: typing.Union[bool, float] = False):
+                       v_term_repulsion_ratio: typing.Union[bool, float] = False,
+                       blocks: typing.Union[bool, typing.List[typing.List[int]]] = False):
         """
         Method that writes all matrices and calculates equivalent sites
+        :param blocks: If False than the single impurity embedding is executed, else it has to be 2d array
+        that tells which sites are embedded together.
         :param u: 1D array that represents on-site repulsion
         :param t: 2D array that represents hopping operator integrals (or any other 1-electron operator)
         :param v_ext: 1D array representing external potential vector
@@ -404,8 +416,73 @@ class Molecule:
         for group_id, atom_list in enumerate(self.equiv_atom_groups):
             for site_id in atom_list:
                 self.equiv_atom_groups_reverse[site_id] = group_id
-        if not self.block_hh:
+        self.prepare_for_block(blocks)
+
+        if blocks is False:
             self.equiv_site_helper_list = self.equiv_atom_groups
+
+        self.kinetic_contributions = np.zeros(len(self.blocks), dtype=np.float64)
+        self.onsite_repulsion = np.zeros(len(self.blocks), dtype=np.float64)
+        self.v_term_repulsion = np.zeros(len(self.blocks), dtype=np.float64)
+
+    def prepare_for_block(self, blocks: typing.Union[bool, typing.List[typing.List[int]]] = False):
+        """
+        This method takes in the block list and generates all necessary objects to make block Householder working
+        :param blocks: 2d list looking like [[sites in cluster 0, ..], [sites in cluster 1, ...], ...]
+        :return: None
+        """
+        if blocks is False:
+            blocks = [[i] for i in range(self.Ns)]
+        n_blocks = len(blocks)
+        if 0 not in blocks[0]:
+            general_logger.error('site 0 must be in the first block')
+            return 0
+        self.blocks = blocks
+        normalized_blocks = [[int(self.equiv_atom_groups_reverse[j]) for j in i] for i in blocks]
+        # normalized_blocks is an array of groups in each block each site from block is replaced by its equiv group
+        ignored = []
+        equiv_block_list = []
+        for i in range(n_blocks):  # Find blocks that are equivalent
+            if i in ignored:
+                continue
+            equiv_block_list.append([i])
+            for j in range(i + 1, n_blocks):
+                if i in ignored:
+                    continue
+                if sorted(normalized_blocks[i]) == sorted(normalized_blocks[j]):
+                    equiv_block_list[-1].append(j)
+                    ignored.append(j)
+        self.equiv_block_groups = equiv_block_list
+        ignore = []
+        equiv_atoms_in_block = []
+        for i in range(self.Ns):  # Identifying equivalent sites in block
+            if i in ignore:
+                continue
+            atom_group = int(self.equiv_atom_groups_reverse[i])
+            equivalent_atoms = self.equiv_atom_groups[atom_group]
+            block_i = [i in h for h in self.blocks].index(True)
+            block_group_i = [block_i in h for h in self.equiv_block_groups].index(True)
+            equiv_atoms_in_block.append([i])
+            for j in equivalent_atoms:
+                if i == j or j in ignore:
+                    continue
+                    # Only if i!=j and if i>j so we don't count things twice
+                block_j = [j in h for h in self.blocks].index(True)
+                block_group_j = [block_j in h for h in self.equiv_block_groups].index(True)
+                if block_group_j == block_group_i:
+                    equiv_atoms_in_block[-1].append(j)
+                    ignore.append(j)
+            ignore.append(i)
+        general_logger.info(f"Equivalent blocks: {self.equiv_block_groups}")
+        general_logger.info(f"Equivalent atoms inside blocks: {equiv_atoms_in_block}")
+        self.equiv_atoms_in_block = equiv_atoms_in_block
+        self.equiv_site_helper_list = self.equiv_atoms_in_block
+
+        for block_i in blocks:  # now each cluster can have different size so we need to create objects for each size
+            block_size = len(block_i)
+            self.embedded_mol_dict[block_size] = class_qnb.HamiltonianV2(block_size * 2, block_size * 2)
+            self.embedded_mol_dict[block_size].build_operator_a_dagger_a(silent=True)
+        # self.block_hh = True
 
     def calculate_ks(self, prevent_extreme_values=False):
         """
@@ -454,7 +531,10 @@ class Molecule:
         per_site_array = np.zeros(self.Ns, dtype=[('tot', float), ('kin', float), ('v_ext', float), ('u', float),
                                                   ('v_term', float)])
         per_site_array['kin'] = self.kinetic_contributions  # call from precalculated values
-        per_site_array['v_ext'] = self.v_ext * self.n_ks
+        group_density = np.zeros(len(self.blocks))
+        for group_id, group in enumerate(self.blocks):
+            per_site_array['v_ext'][group_id] = np.sum(self.v_ext[group] * self.n_ks[group])
+            group_density[group_id] = np.sum(self.n_ks[group])
         per_site_array['u'] = self.onsite_repulsion
         per_site_array['v_term'] = self.v_term_repulsion
         per_site_array['tot'] = np.sum(np.array(per_site_array[['kin', 'v_ext', 'u', 'v_term']].tolist()), axis=1)
@@ -475,7 +555,7 @@ class Molecule:
                 f'{" ".join([f"{i:9.4f}" for i in self.onsite_repulsion])}{u_contribution:12.7f}\n'
                 f'{"V-term repulsion":30s}{" ".join([f"{i:9.4f}" for i in self.v_term_repulsion])}'
                 f'{v_term_contribution:12.7f}\n'
-                f'{"Occupations":30s}{" ".join([f"{i:9.4f}" for i in self.n_ks])}{np.sum(self.n_ks) * 2:12.7f}')
+                f'{"Occupations":30s}{" ".join([f"{i:9.4f}" for i in group_density])}{np.sum(self.n_ks) * 2:12.7f}')
             general_logger.info(f'{"_" * 20}\nTotal energy:{total_energy}')
         return total_energy
 
@@ -665,33 +745,6 @@ class Molecule:
         FUN_ERROR_END = model.fun
         return v_hxc
 
-    def update_variables_embedded(self, v_tilde, h_tilde, site_group, mu_imp, embedded_mol, u_0_dimer=None):
-        """
-        Calculation of energy contributions after embedding
-        :param v_tilde: Transformed NNI term in Householder basis
-        :param h_tilde: 1-electron interactions in Householder basis
-        :param site_group: integer of site that is impurity
-        :param mu_imp: impurity potential value
-        :param embedded_mol: HamiltonianV2 object with loaded correct H matrix.
-        :param u_0_dimer: on-site repulsion 4D array.
-        :return: None
-        """
-        two_rdm_u = embedded_mol.build_2rdm_fh_on_site_repulsion(u_0_dimer)
-        on_site_repulsion_i = two_rdm_u[0, 0, 0, 0] * u_0_dimer[0, 0, 0, 0]
-        if self.v_term is not None:
-            two_rdm_v_term = embedded_mol.build_2rdm_fh_dipolar_interactions(v_tilde)
-            v_term_repulsion_i = np.sum(two_rdm_v_term * v_tilde)
-        else:
-            v_term_repulsion_i = 0
-        for every_site_id in self.equiv_atom_groups[site_group]:
-            self.kinetic_contributions[every_site_id] = h_tilde[1, 0] * (embedded_mol.one_rdm[1, 0])
-            self.onsite_repulsion[every_site_id] = on_site_repulsion_i
-            self.imp_potential[every_site_id] = mu_imp
-            self.v_term_repulsion[every_site_id] = v_term_repulsion_i
-        # something like:
-        # self.imp_potential[self.blocks[site_group]] = mu_imp
-        # But now we see that there is a problem with the sites and blocks :c
-
     def transform_v_term(self, p, site_id, calculate_one_site=None, return_whole=False):
         """
         This method takes only interactions corresponding to an impurity and transforms 2D self.v_term into 4D array
@@ -730,175 +783,6 @@ class Molecule:
 
     @staticmethod
     def cost_function_whole(v_hxc_approximation: np.array, mol_obj: 'Molecule') -> np.array:
-        """
-        Cost function that is optimized in find_solution_as_root
-        :param v_hxc_approximation: Vector with length of number of non-equivalent sites. First value represents
-        mu_imp_0 and next values represent v_Hxc_i assuming that v_Hxc_0 = 0.
-        :param mol_obj: it is Molecule object with all matrices loaded. If it was normal method it would be self but
-        because this function is meant for the optimizer, the first argument has to be X.
-        :return: Error vector or <Psi^i|n_i|Psi^i> - <Phi|n_i|Phi>
-        """
-        mol_obj.optimize_progress_input.append(v_hxc_approximation.copy())
-        mol_obj.v_hxc = np.zeros(mol_obj.Ns, float)
-        mu_imp_first = v_hxc_approximation[0]
-        for group_id, group_site_tuple in enumerate(mol_obj.equiv_atom_groups):
-            for site_id_i in group_site_tuple:  # setting Hxc potentials for the iteration
-                if group_id != 0:
-                    mol_obj.v_hxc[site_id_i] = v_hxc_approximation[group_id]
-                else:
-                    mol_obj.v_hxc[site_id_i] = 0
-        mol_obj.v_hxc_progress.append(mol_obj.v_hxc)
-        mol_obj.calculate_ks(False)
-        mol_obj.density_progress.append(mol_obj.n_ks)
-        output_array = np.zeros(len(mol_obj.equiv_atom_groups), float)
-        output_index = 0  # For the writing in the output array
-
-        for site_group, group_tuple in enumerate(mol_obj.equiv_atom_groups):  # For loop through impurities
-            site_id = group_tuple[0]
-            y_a_correct_imp = change_indices(mol_obj.y_a, site_id)
-            p, v = qnb.tools.householder_transformation(y_a_correct_imp)
-            h_tilde = p @ (change_indices(mol_obj.t, site_id) + np.diag(change_indices(mol_obj.v_s, site_id))) @ p
-            h_tilde_dimer = h_tilde[:2, :2]
-            v_tilde = mol_obj.transform_v_term(p, site_id)
-            u_0_dimer = np.zeros((2, 2, 2, 2), dtype=np.float64)
-            u_0_dimer[0, 0, 0, 0] += mol_obj.u[site_id]
-
-            mu_imp = mu_imp_first + mol_obj.v_hxc[site_id]
-            error_i = mol_obj.cost_function_2(mu_imp, mol_obj.embedded_mol, h_tilde_dimer, u_0_dimer,
-                                              mol_obj.n_ks[site_id], v_tilde)
-            output_array[output_index] = error_i
-            output_index += 1
-            mol_obj.update_variables_embedded(v_tilde, h_tilde, site_group, mu_imp, mol_obj.embedded_mol, u_0_dimer)
-        rms = np.sqrt(np.mean(np.square(output_array)))
-        general_logger.info(
-            f"for input {''.join(['{num:{dec}}'.format(num=cell, dec='+10.2e') for cell in mol_obj.v_hxc])} error is"
-            f" {''.join(['{num:{dec}}'.format(num=cell, dec='+10.2e') for cell in output_array])} (RMS = {rms})")
-        mol_obj.optimize_progress_output.append(output_array.copy())
-        if np.sqrt(np.sum(np.square(output_array))) < 1e-10:
-            return output_array * 0
-        return output_array
-
-
-def find_equivalent_block(mol_obj: Molecule, one_site_id: int):
-    """
-    Even equivalent atoms can get different approximation for v_Hxc if they are places in cluster in a specific way.
-    This function finds which sites are equivalent to one_site_id even after they are split in different blocks.
-    :param mol_obj: Molecule object
-    :param one_site_id: the site that we want to find equivalent sites to.
-    :return: list of equivalent sites to one_site_id
-    """
-    eq_block = None
-    for t1 in range(len(mol_obj.equiv_atoms_in_block)):
-        if one_site_id in mol_obj.equiv_atoms_in_block[t1]:
-            eq_block = mol_obj.equiv_atoms_in_block[t1]
-            break
-    if eq_block is None:
-        raise Exception(f"Site not found in the equiv_atoms_in_block ({one_site_id} in {mol_obj.equiv_atoms_in_block})")
-    return eq_block
-
-
-def generate_from_graph(sites, connections):
-    """
-    We can provide graph information and program generates hamiltonian automatically
-    :param sites: in the type of: {0:{'v':0, 'U':4}, 1:{'v':1, 'U':4}, 2:{'v':0, 'U':4}, 3:{'v':1, 'U':4}}
-    :param connections: {(0, 1):1, (1, 2):1, (2, 3):1, (0,3):1} --> positive t values!!
-    :return: h and U parameters
-    """
-    n_sites = len(sites)
-    t = np.zeros((n_sites, n_sites), dtype=np.float64)
-    v = np.zeros(n_sites, dtype=np.float64)
-    u = np.zeros(n_sites, dtype=np.float64)
-    for id1, params in sites.items():
-        if 'U' in params:
-            u[id1] = params['U']
-        elif 'u' in params:
-            u[id1] = params['u']
-        else:
-            raise "Problem with params: " + params
-        v[id1] = params['v']
-    for pair, param in connections.items():
-        t[pair[0], pair[1]] = -param
-        t[pair[1], pair[0]] = -param
-    return t, v, u
-
-
-class MoleculeBlock(Molecule):
-    """
-    Block implementation of the LPFET
-    """
-
-    def __init__(self, site_number, electron_number, description=''):
-        super().__init__(site_number, electron_number, description)
-        self.block_hh = True
-        self.embedded_mol_dict = dict()
-        self.blocks = []  # This 2d list tells us which sites are merged into which clusters [[c0s0, c0s1,..],[c1s0...]]
-        self.equiv_block_groups = []  # This 2d list tells us which blocks are equivalent. [0, 1], [2]] means that first
-        # block is same as second and 3rd is different
-        self.equiv_atoms_in_block = []  # This 2d list is important so we know which atoms have the same impurity
-        # potentials. This list is important because we have to optimize len(..) - 1 Hxc potentials
-
-        self.h = np.array([])  # Ready for ab-initio Hamiltonian
-        self.g = np.array([])
-
-    def prepare_for_block(self, blocks: typing.List[typing.List[int]]):
-        """
-        This method takes in the block list and generates all necessary objects to make block Householder working
-        :param blocks: 2d list looking like [[sites in cluster 0, ..], [sites in cluster 1, ...], ...]
-        :return: None
-        """
-        n_blocks = len(blocks)
-        if 0 not in blocks[0]:
-            general_logger.error('site 0 must be in the first block')
-            return 0
-        self.blocks = blocks
-        normalized_blocks = [[int(self.equiv_atom_groups_reverse[j]) for j in i] for i in blocks]
-        # normalized_blocks is an array of groups in each block each site from block is replaced by its equiv group
-        ignored = []
-        equiv_block_list = []
-        for i in range(n_blocks):  # Find blocks that are equivalent
-            if i in ignored:
-                continue
-            equiv_block_list.append([i])
-            for j in range(i + 1, n_blocks):
-                if i in ignored:
-                    continue
-                if sorted(normalized_blocks[i]) == sorted(normalized_blocks[j]):
-                    equiv_block_list[-1].append(j)
-                    ignored.append(j)
-        self.equiv_block_groups = equiv_block_list
-        ignore = []
-        equiv_atoms_in_block = []
-        for i in range(self.Ns):  # Identifying equivalent sites in block
-            if i in ignore:
-                continue
-            atom_group = int(self.equiv_atom_groups_reverse[i])
-            equivalent_atoms = self.equiv_atom_groups[atom_group]
-            block_i = [i in h for h in self.blocks].index(True)
-            block_group_i = [block_i in h for h in self.equiv_block_groups].index(True)
-            equiv_atoms_in_block.append([i])
-            for j in equivalent_atoms:
-                if i == j or j in ignore:
-                    continue
-                    # Only if i!=j and if i>j so we don't count things twice
-                block_j = [j in h for h in self.blocks].index(True)
-                block_group_j = [block_j in h for h in self.equiv_block_groups].index(True)
-                if block_group_j == block_group_i:
-                    equiv_atoms_in_block[-1].append(j)
-                    ignore.append(j)
-            ignore.append(i)
-        general_logger.info(f"Equivalent blocks: {self.equiv_block_groups}")
-        general_logger.info(f"Equivalent atoms inside blocks: {equiv_atoms_in_block}")
-        self.equiv_atoms_in_block = equiv_atoms_in_block
-        self.equiv_site_helper_list = self.equiv_atoms_in_block
-
-        for block_i in blocks:  # now each cluster can have different size so we need to create objects for each size
-            block_size = len(block_i)
-            self.embedded_mol_dict[block_size] = class_qnb.HamiltonianV2(block_size * 2, block_size * 2)
-            self.embedded_mol_dict[block_size].build_operator_a_dagger_a(silent=True)
-        self.block_hh = True
-
-    @staticmethod
-    def cost_function_whole(v_hxc_approximation: np.array, mol_obj: 'MoleculeBlock') -> np.array:
         """
         Block version of the cost function.
         :param v_hxc_approximation: Vector with length of number of non-equivalent sites. First value represents
@@ -959,9 +843,13 @@ class MoleculeBlock(Molecule):
             # v_tilde_old = v_tilde.copy()
             if ACTIVE_SPACE_CALCULATION:
                 ret = calculate_integrals(mol_obj, site_id, p, two_electron_interactions, V=True)
-                core_energy, h_tilde_dimer, two_electron_interactions, v_tilde = ret
+                core_energy, h_tilde_dimer_as, two_electron_interactions, v_tilde = ret
+                h_tilde_correction = h_tilde_dimer_as - h_tilde_dimer
+                h_tilde_dimer = h_tilde_dimer_as
                 if core_energy != 0:
                     print("CORE ENERGY: ", core_energy)
+            else:
+                h_tilde_correction = 0
             error_i = mol_obj.cost_function_2(mu_imp, mol_obj.embedded_mol_dict[block_size], h_tilde_dimer,
                                               two_electron_interactions, mol_obj.n_ks[site_id], v_tilde,
                                               mol_obj.ab_initio)
@@ -974,9 +862,10 @@ class MoleculeBlock(Molecule):
 
             # energy contributions
             if mol_obj.ab_initio:
-                mol_obj.update_cluster_energy_qc(site_id, p)
+                mol_obj.update_cluster_energy_qc(group_tuple, p, h_tilde_correction, two_electron_interactions)
             else:
-                mol_obj.update_cluster_energy_fh(site_id, t_correct_indices, two_electron_interactions, p)
+                mol_obj.update_cluster_energy_fh(group_tuple, p, h_tilde_correction, two_electron_interactions, v_tilde,
+                                                 t_correct_indices)
 
         max_dev = np.max(np.abs(output_array))
         general_logger.log(
@@ -988,66 +877,58 @@ class MoleculeBlock(Molecule):
         return output_array
 
     @staticmethod
-    def cost_function_whole_minimize(v_hxc_approximation: np.array, mol_obj: 'MoleculeBlock'):
+    def cost_function_whole_minimize(v_hxc_approximation: np.array, mol_obj: 'Molecule'):
         ret_vec = mol_obj.cost_function_whole(v_hxc_approximation, mol_obj)
         ret_vec = np.sum(np.square(ret_vec))
         return ret_vec
 
-    def update_cluster_energy_fh(self, site_id, t_correct_indices,
-                                 two_electron_interactions, p):
+
+    def update_cluster_energy_fh(self, group_tuple, p, h_tilde_correction, two_electron_interactions, v_tilde,
+                                                 t_correct_indices):
         """
         Based on the correlated wave function results this method calculates energy contributions for Hubbard molecule
         that correspond to this cluster.
-        :param site_id: list of sites that were embedded
-        :param t_correct_indices: t matrix with changed indices so impurity is on the site 0, 1, ...
-        :param two_electron_interactions: 4d array representing U matrix
-        :param p: Householder transformation
         :return: None
         """
+        block_id = group_tuple[0]
+        site_id = self.blocks[block_id]
         block_size = len(site_id)
         one_rdm_c = self.embedded_mol_dict[block_size].one_rdm
         two_rdm_c = self.embedded_mol_dict[block_size].build_2rdm_fh_on_site_repulsion(two_electron_interactions)
-        for index, site in enumerate(site_id):
 
-            if self.v_term is not None:
-                v_tilde = self.transform_v_term(p, site_id, site)
-                two_rdm_v_term = self.embedded_mol_dict[block_size].build_2rdm_fh_dipolar_interactions(v_tilde)
-                v_term_repulsion_i = np.sum(two_rdm_v_term * v_tilde)
-            else:
-                v_term_repulsion_i = 0
-            self.v_term_repulsion[site] = v_term_repulsion_i
+        if self.v_term is not None:
+            v_term_repulsion_i = np.sum(v_tilde * v_tilde)
+            v_term_repulsion_i += np.sum(h_tilde_correction * one_rdm_c)
+        else:
+            v_term_repulsion_i = 0
+        self.v_term_repulsion[group_tuple] = v_term_repulsion_i
 
-            t_tilde_i = t_correct_indices.copy()
-            t_tilde_i[[i for i in range(self.Ns) if i != index]] = 0
-            t_tilde_i = (p @ t_tilde_i @ p)[:block_size * 2, :block_size * 2]
+        t_tilde_i = t_correct_indices.copy()
+        t_tilde_i[[i for i in range(self.Ns) if i not in range(block_size)]] = 0
+        t_tilde_i = (p @ t_tilde_i @ p)[:block_size * 2, :block_size * 2]
 
-            eq_block = find_equivalent_block(self, site)
-            self.kinetic_contributions[eq_block] = np.sum(t_tilde_i * one_rdm_c)
-            self.onsite_repulsion[eq_block] = two_rdm_c[index, index, index, index] * two_electron_interactions[
-                index, index, index, index]
+        self.kinetic_contributions[group_tuple] = np.sum(t_tilde_i * one_rdm_c)
+        self.onsite_repulsion[group_tuple] = np.sum(two_rdm_c * two_electron_interactions)
 
-    def update_cluster_energy_qc(self, site_id, p):
+    def update_cluster_energy_qc(self, group_tuple, p, h_tilde_correction, two_electron_interactions):
         """
         Based on the correlated wave function results this method calculates energy contributions for ab-initio
         Hamiltonian that correspond to this cluster.
-        :param site_id: list of sites that were embedded
-        :param p: Householder transformation matrix
         :return: None
         """
+        block_id = group_tuple[0]
+        site_id = self.blocks[block_id]
         block_size = len(site_id)
         one_rdm = self.embedded_mol_dict[block_size].one_rdm
         two_rdm = self.embedded_mol_dict[block_size].build_2rdm_spin_free()
         h_tilde = change_indices(self.h, site_id)
-        for index, site in enumerate(site_id):
-            h_tilde_i = h_tilde.copy()
-            h_tilde_i[[i for i in range(self.Ns) if i != index]] = 0
-            h_tilde_i = (p @ h_tilde_i @ p)[:block_size * 2, :block_size * 2]
+        h_tilde = h_tilde.copy()
+        h_tilde[[i for i in range(self.Ns) if i not in range(block_size)]] = 0
+        h_tilde = (p @ h_tilde_i @ p)[:block_size * 2, :block_size * 2]
 
-            g_tilde_i = self.transform_g_term(p, site_id, site)
-
-            eq_block = find_equivalent_block(self, site)
-            self.kinetic_contributions[eq_block] = np.sum(h_tilde_i * one_rdm)
-            self.onsite_repulsion[eq_block] = np.sum(g_tilde_i * two_rdm) / 2
+        self.kinetic_contributions[group_tuple] = np.sum(h_tilde * one_rdm)
+        self.onsite_repulsion[group_tuple] = np.sum(two_electron_interactions * two_rdm) / 2
+        self.v_term_repulsion[site] = h_tilde_correction * one_rdm
 
     def transform_g_term(self, p, site_id, only_one_site=None, bath_type='NIB', return_whole=False):
         """
@@ -1086,12 +967,56 @@ class MoleculeBlock(Molecule):
         return g_term
 
 
-class MoleculeBlockChemistry(MoleculeBlock):
+
+def find_equivalent_block(mol_obj: Molecule, one_site_id: int):
+    """
+    Even equivalent atoms can get different approximation for v_Hxc if they are places in cluster in a specific way.
+    This function finds which sites are equivalent to one_site_id even after they are split in different blocks.
+    :param mol_obj: Molecule object
+    :param one_site_id: the site that we want to find equivalent sites to.
+    :return: list of equivalent sites to one_site_id
+    """
+    eq_block = None
+    for t1 in range(len(mol_obj.equiv_atoms_in_block)):
+        if one_site_id in mol_obj.equiv_atoms_in_block[t1]:
+            eq_block = mol_obj.equiv_atoms_in_block[t1]
+            break
+    if eq_block is None:
+        raise Exception(f"Site not found in the equiv_atoms_in_block ({one_site_id} in {mol_obj.equiv_atoms_in_block})")
+    return eq_block
+
+
+def generate_from_graph(sites, connections):
+    """
+    We can provide graph information and program generates hamiltonian automatically
+    :param sites: in the type of: {0:{'v':0, 'U':4}, 1:{'v':1, 'U':4}, 2:{'v':0, 'U':4}, 3:{'v':1, 'U':4}}
+    :param connections: {(0, 1):1, (1, 2):1, (2, 3):1, (0,3):1} --> positive t values!!
+    :return: h and U parameters
+    """
+    n_sites = len(sites)
+    t = np.zeros((n_sites, n_sites), dtype=np.float64)
+    v = np.zeros(n_sites, dtype=np.float64)
+    u = np.zeros(n_sites, dtype=np.float64)
+    for id1, params in sites.items():
+        if 'U' in params:
+            u[id1] = params['U']
+        elif 'u' in params:
+            u[id1] = params['u']
+        else:
+            raise "Problem with params: " + params
+        v[id1] = params['v']
+    for pair, param in connections.items():
+        t[pair[0], pair[1]] = -param
+        t[pair[1], pair[0]] = -param
+    return t, v, u
+
+
+class MoleculeChemistry(Molecule):
     def __init__(self, site_number, electron_number, description=''):
         super().__init__(site_number, electron_number, description)
         self.ab_initio = True
 
-    def add_parameters(self, g, h, equivalent_atoms=None, temp2=False):
+    def add_parameters(self, g, h, equivalent_atoms=None, temp2=False, blocks=False):
         """
         Instead of saving to v_ext, t, u, this overloaded method saves to g, h. ALso since the equivalence algorithm
         doesn't work well blocks array can be supplied manually.
@@ -1121,6 +1046,8 @@ class MoleculeBlockChemistry(MoleculeBlock):
         for group_id, atom_list in enumerate(self.equiv_atom_groups):
             for site_id in atom_list:
                 self.equiv_atom_groups_reverse[site_id] = group_id
+
+        self.prepare_for_block(blocks)
 
 
 if __name__ == "__main__":
