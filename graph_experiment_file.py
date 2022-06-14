@@ -6,6 +6,7 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 import numpy as np
 lpfet.stream_handler.setLevel(20)
+import matplotlib as mpl
 
 a = datetime.now()
 
@@ -27,7 +28,7 @@ a = datetime.now()
 
 # region random progression
 times = []
-for i in range(20):
+for i in range(1):
     print(f'\n\ni={i}\n\n')
     a = datetime.now()
     mol1 = lpfet.MoleculeBlock(8, 8)
@@ -46,18 +47,22 @@ for i in range(20):
     print(f'tot time: {datetime.now()-a}')
     times.append([t1, t2])
 print(*times, sep='\n')
-# n = np.array(mol1.density_progress)
-# delta_n = np.array(mol1.optimize_progress_output)
-# fig, ax = plt.subplots(1,1)
-# for i in range(len(delta_n[0])):
-#     ax.plot(np.abs(delta_n[:, i]), c=plt.get_cmap('viridis')(i/len(delta_n[0])))
-# ax.set_yscale('log')
-# ax.set_ylabel(r'''absolute density error $|e|$''')
-# ax.set_xlabel(r'''Iteration number''')
+n = np.array(mol1.density_progress)
+delta_n = np.array(mol1.optimize_progress_output)
+
+fig, ax = plt.subplots(1, 1, figsize=(7 * 0.9, 4 * 0.9))
+for i in range(len(delta_n[0])):
+    ax.plot(np.abs(delta_n[:, i]), c=mpl.cm.get_cmap('tab10')(i), label=i)
+ax.set_yscale('log')
+ax.set_ylabel(r'''absolute density error $|e|$''')
+ax.set_xlabel(r'''Iteration number''')
+box = ax.get_position()
+ax.set_position([box.x0, box.y0 + 0.05, box.width * 0.85, box.height])
+ax.legend(bbox_to_anchor=(1.04, 0.5), title='Site number', loc='center left')
 # plt.savefig('thesis_graphs/iteration_error.svg', dpi=300, bbox_inches='tight')
 # plt.savefig('thesis_graphs/iteration_error.eps', dpi=300, bbox_inches='tight')
 # plt.savefig('thesis_graphs/iteration_error.png', dpi=300, bbox_inches='tight')
-# plt.show()
+plt.show()
 # endregion
 
 

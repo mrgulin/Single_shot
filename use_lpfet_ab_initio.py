@@ -20,6 +20,12 @@ E_FCI = []
 E_lpfet = []
 E_FCI_QNB = []
 
+N_MO = 8
+N_elec = 8
+blocks = [[0, 1], [2, 3], [4, 5], [6, 7]]  # [[i] for i in range(8)]  # [[0, 1], [2, 3], [4, 5], [6, 7]]
+eq_sites = [[0, 7],[1, 6], [2, 5], [3, 4]]  # [[0, 7], [1, 6], [2, 5], [3, 4]]  # [[0, 6], [1, 7], [2, 4], [3, 5]]  #
+lpfet.ACTIVE_SPACE_CALCULATION = True
+name_system = 'H8_chain_cluster2222_non-int-bath_AS'
 N_MO = 6
 N_elec = 6
 blocks = [[0, 1], [2, 3], [4, 5]]  # [[i] for i in range(8)]  # [[0, 1], [2, 3], [4, 5], [6, 7]]

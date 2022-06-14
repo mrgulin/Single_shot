@@ -326,7 +326,7 @@ def calculate_graphs(folder_name, x, y, y_ref, y_simple, energy, energy_ref, v_h
     fig.tight_layout()
     plt.xlabel(x_label)
     ax.set_ylabel('Error energy')
-    for site in range(len(y_simple[0])):
+    for site in range(len(e_per_site[0]['tot'])):
         ax.plot(x, e_per_site[:, site]['tot'] - e_ref_per_site[:, site]['tot'], c=mpl.cm.get_cmap('tab10')(site),
                 label=f'deviation on site {site}')
     fig.legend(loc='center left', bbox_to_anchor=(1, 0.5))

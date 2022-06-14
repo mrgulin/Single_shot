@@ -32,7 +32,7 @@ ROOT_FINDING_LIST_INPUT = []  # All inputs for the cluster correlated wave funct
 ROOT_FINDING_LIST_OUTPUT = []  # All outputs for the cluster correlated wave function calculations
 ITERATION_NUM = 0
 ACTIVE_SPACE_CALCULATION = False
-INTERACTING_BATH = False
+BATH_TYPE = "NIB"  # IN or NIB
 
 ROOT_LPFET_SOLVER_MAX_ITER = 100
 np.seterr(all='raise')
