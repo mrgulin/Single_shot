@@ -1,4 +1,5 @@
-# This class is for Martin. I am going to move it away after I stop developing it
+# This file has implementation of the Hamiltonian from quantnbody but with additional tools functions as methods.
+
 import quantnbody as qnb
 import numpy as np
 import scipy
