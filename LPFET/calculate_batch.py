@@ -23,7 +23,6 @@ general_logger.addHandler(stream_handler)
 def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecule_name, u_param=None, i_param=None,
                    delta_x=None, max_value=None, r_param=None, force=True, blocks=None, calculate_progress=False):
     start_iter = lpfet.ITERATION_NUM
-    name = molecule_name
     if u_param is not None and i_param is not None:
         raise Exception("Can't specify both parameters")
     elif u_param is not None:
@@ -32,7 +31,7 @@ def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecul
             delta_x = 0.1
             max_value = 2
         x = np.arange(0, max_value + 0.01, delta_x)
-        folder_name = f'results/i_{name}_ns-{n_sites}_ne-{n_electron}_u-{u_param}_dist-{delta_x}/'
+        folder_name = f'results/i_{molecule_name}_ns-{n_sites}_ne-{n_electron}_u-{u_param}_dist-{delta_x}/'
         constant_var = 'u'
 
     elif i_param is not None:
@@ -41,7 +40,7 @@ def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecul
             delta_x = 0.5
             max_value = 10
         x = np.arange(0, max_value + 0.01, delta_x)
-        folder_name = f'results/u_{name}_ns-{n_sites}_ne-{n_electron}_i-{i_param}_dist-{delta_x}/'
+        folder_name = f'results/u_{molecule_name}_ns-{n_sites}_ne-{n_electron}_i-{i_param}_dist-{delta_x}/'
         constant_var = 'i'
     else:
         raise Exception("None of the parameters is set!")
@@ -54,10 +53,7 @@ def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecul
         if os.path.isfile(folder_name + "/Energy_errors_per_site.svg") or os.path.isfile(folder_name + 'skipped.txt'):
             general_logger.info(f"THERE IS ALREADY DATA in folder {folder_name}. FUNCTION WILL EXIT.")
             return 0
-    if blocks is not None:
-        mol1 = lpfet.MoleculeBlock(n_sites, n_electron, name)
-    else:
-        mol1 = lpfet.Molecule(n_sites, n_electron, name)
+    mol1 = lpfet.Molecule(n_sites, n_electron)
     mol_full = lpfet.class_qnb.HamiltonianV2(n_sites, n_electron)
     mol_full.build_operator_a_dagger_a()
     y = []
@@ -91,7 +87,7 @@ def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecul
             # starting_approximation_c_hxc = np.zeros(approx_len)
             # for ind in range(approx_len):
             #     starting_approximation_c_hxc[ind] = old_v_hxc[mol1.equiv_atom_groups[ind + 1][0]]
-            mol1.clear_object(name)
+            mol1.clear_object()
         general_logger.info(f'{i:.1f}, {i / max(x) * 100:.1f}%: ')
         nodes_dict, edges_dict = model_function(i_param, n_sites, u_param)
         t, v_ext, u = lpfet.generate_from_graph(nodes_dict, edges_dict)
@@ -106,9 +102,9 @@ def generate_trend(n_sites, n_electron, model_function: typing.Callable, molecul
         mol1.report_string = f'Object with {n_sites} sites and {n_electron} electrons\n'
         with open(f"{folder_name}systems.txt", "a") as my_file:
             my_file.write(f"\n\n{repr(t)}\n{repr(v_ext)}\n{repr(u)}")
-        mol1.add_parameters(u, t, v_ext, r_param)
-        if blocks is not None:
-            mol1.prepare_for_block(blocks)
+        if blocks is None:
+            blocks = False
+        mol1.add_parameters(u, t, v_ext, r_param, blocks)
         if starting_approximation_c_hxc is not None and len(mol1.equiv_atom_groups) != len(starting_approximation_c_hxc):
             starting_approximation_c_hxc = None
         time1 = datetime.now()

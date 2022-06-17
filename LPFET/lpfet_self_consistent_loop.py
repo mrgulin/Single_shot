@@ -8,7 +8,7 @@ COMPENSATION_5_FACTOR2 = 0.5
 
 class MoleculeSCL(Molecule):
     def __init__(self):
-        super().__init__(site_number, electron_number, description)
+        super().__init__(site_number, electron_number)
         self.embedded_mol_dict = dict()
         self.compensation_ratio_dict = dict()
 

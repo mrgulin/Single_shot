@@ -60,7 +60,7 @@ def householder_transformation(matrix, fragment_size=1):
     except BaseException as e:
         raise errors.HouseholderTransformationError(matrix) from e
     if np.any(np.isnan(p)):
-        raise errors.HouseholderTransformationError(y_a_correct_imp)
+        raise errors.HouseholderTransformationError(matrix)
     return p, r
 
 
@@ -166,7 +166,7 @@ def calculate_integrals(mol_obj, site_id, p, two_e_interactions, V=None):
     frozen_indices = list(np.arange(C_occ_env.shape[1]))
     active_indices = list(np.arange(C_cluster_active.shape[1]) + C_occ_env.shape[1])
     if mol_obj.ab_initio:
-        two_e_int_tilde = mol_obj.transform_g_term(C_ht, site_id, bath_type='IB', return_whole=True)
+        two_e_int_tilde = mol_obj.transform_g_term(C_ht, site_id, bath_type=BATH_TYPE, return_whole=True)
         h_tilde_cas = C_ht.T @ (change_indices(mol_obj.h, site_id) + np.diag(change_indices(mol_obj.v_s, site_id))) @ C_ht
         ret = qnb.tools.qc_get_active_space_integrals(h_tilde_cas, two_e_int_tilde, frozen_indices, active_indices)
         core_energy, h_tilde_as, u_dimer_as = ret
@@ -243,8 +243,6 @@ def change_indices(array_inp: np.array, site_id: typing.Union[int, typing.List[i
                     break
                 set_list2.append(set_list[buffer_set + i])
                 get_list2.append(get_list[buffer_get + i])
-            # general_logger.error(f"Special case with column switching: "
-            #                      f"{get_list}, {set_list} --> {get_list2}, {set_list2}")
             get_list = get_list2
             set_list = set_list2
         # region Actual transformation of the array
@@ -264,7 +262,7 @@ def change_indices(array_inp: np.array, site_id: typing.Union[int, typing.List[i
     return array
 
 
-def cangen(t, cannon_list, g=None):  # TODO: actually implement g!!!!
+def cangen(t, cannon_list):
     """
     A method to define chemically non-equivalent sites in model Hamiltonian
     :param t: 1-electron matrix
@@ -296,12 +294,8 @@ def cangen(t, cannon_list, g=None):  # TODO: actually implement g!!!!
     while iter1 < 15 or sum(order - order_old) != 0:
 
         order_new = np.zeros(len(order), int)
-        if g is not None:
-            g_per_line = np.round(np.sum(g, axis=(1, 2, 3)), 3)
-        else:
-            g_per_line = np.zeros(len(t))
         for i in range(len(cannon_list)):
-            order_new[i] = order[i] * 100 + np.sum((t[i] + g_per_line[i]) * order)
+            order_new[i] = order[i] * 100 + np.sum(t[i] * order)
         iter1 += 1
         order_old = order.copy()
         order = normalize_values(order_new)
@@ -318,8 +312,7 @@ class Molecule:
     This is a class that is meant for the single impurity calculations
     """
 
-    def __init__(self, site_number, electron_number, description=''):
-        self.description = f"{datetime.now().strftime('%Y_%m_%d_%H_%M')}" + description
+    def __init__(self, site_number, electron_number):
         # Basic data about system
         self.Ns = site_number
         self.Ne = electron_number
@@ -327,11 +320,7 @@ class Molecule:
         # Parameters for the system
         self.u = np.array((), dtype=np.float64)  # for the start only 1D array and not 4d tensor
         self.t = np.array((), dtype=np.float64)  # 2D one electron Hamiltonian with all terms for i != j
-        self.v_ext = np.zeros(self.Ns)
         self.v_ext = np.array((), dtype=np.float64)  # 1D one electron Hamiltonian with all terms for i == j
-        self.equiv_atom_groups = []
-        self.equiv_site_helper_list = []
-        self.equiv_atom_groups_reverse = []
         self.v_term = None
 
         # density matrix
@@ -355,25 +344,24 @@ class Molecule:
         self.per_site_energy = np.array(())
 
         # Quant_NBody objects for embedding
+        self.embedded_mol_dict = dict()
         self.embedded_mol = class_qnb.HamiltonianV2(2, 2)
         self.embedded_mol.build_operator_a_dagger_a(silent=True)
+
+        self.optimize_progress_input = []  # variables that save progression of the calculation
+        self.optimize_progress_output = []
         self.density_progress = []  # This object is used for gathering changes in the density over iterations
         self.v_hxc_progress = []
 
-        self.iteration_i = 0
-
-        self.ab_initio = False
-        self.optimize_progress_input = []  # variables that save progression of the calculation
-        self.optimize_progress_output = []
-
-        # self.block_hh = True
-        self.embedded_mol_dict = dict()
+        self.equiv_atom_groups = []
+        self.equiv_atom_groups_reverse = []
         self.blocks = []  # This 2d list tells us which sites are merged into which clusters [[c0s0, c0s1,..],[c1s0...]]
         self.equiv_block_groups = []  # This 2d list tells us which blocks are equivalent. [0, 1], [2]] means that first
         # block is same as second and 3rd is different
         self.equiv_atoms_in_block = []  # This 2d list is important so we know which atoms have the same impurity
         # potentials. This list is important because we have to optimize len(..) - 1 Hxc potentials
 
+        self.ab_initio = False
         self.h = np.array([])  # Ready for ab-initio Hamiltonian
         self.g = np.array([])
 
@@ -417,13 +405,6 @@ class Molecule:
             for site_id in atom_list:
                 self.equiv_atom_groups_reverse[site_id] = group_id
         self.prepare_for_block(blocks)
-
-        if blocks is False:
-            self.equiv_site_helper_list = self.equiv_atom_groups
-
-        self.kinetic_contributions = np.zeros(len(self.blocks), dtype=np.float64)
-        self.onsite_repulsion = np.zeros(len(self.blocks), dtype=np.float64)
-        self.v_term_repulsion = np.zeros(len(self.blocks), dtype=np.float64)
 
     def prepare_for_block(self, blocks: typing.Union[bool, typing.List[typing.List[int]]] = False):
         """
@@ -476,13 +457,15 @@ class Molecule:
         general_logger.info(f"Equivalent blocks: {self.equiv_block_groups}")
         general_logger.info(f"Equivalent atoms inside blocks: {equiv_atoms_in_block}")
         self.equiv_atoms_in_block = equiv_atoms_in_block
-        self.equiv_site_helper_list = self.equiv_atoms_in_block
 
         for block_i in blocks:  # now each cluster can have different size so we need to create objects for each size
             block_size = len(block_i)
             self.embedded_mol_dict[block_size] = class_qnb.HamiltonianV2(block_size * 2, block_size * 2)
             self.embedded_mol_dict[block_size].build_operator_a_dagger_a(silent=True)
-        # self.block_hh = True
+
+        self.kinetic_contributions = np.zeros(len(self.blocks), dtype=np.float64)
+        self.onsite_repulsion = np.zeros(len(self.blocks), dtype=np.float64)
+        self.v_term_repulsion = np.zeros(len(self.blocks), dtype=np.float64)
 
     def calculate_ks(self, prevent_extreme_values=False):
         """
@@ -528,7 +511,7 @@ class Molecule:
         :param silent: If False then nice table of different contributions is printed.
         :return: total electronic energy of the system
         """
-        per_site_array = np.zeros(self.Ns, dtype=[('tot', float), ('kin', float), ('v_ext', float), ('u', float),
+        per_site_array = np.zeros(len(self.blocks), dtype=[('tot', float), ('kin', float), ('v_ext', float), ('u', float),
                                                   ('v_term', float)])
         per_site_array['kin'] = self.kinetic_contributions  # call from precalculated values
         group_density = np.zeros(len(self.blocks))
@@ -548,7 +531,8 @@ class Molecule:
         self.per_site_energy = per_site_array
         if not silent:  # print into logger nice table
             general_logger.info(
-                f'\n{"site":30s}{" ".join([f"{i:9d}" for i in range(self.Ns)])}{"total":>12s}\n{"Kinetic energy":30s}'
+                f'\n{"site":30s}{" ".join([f"{str(i)[1:-1]:>9s}" for i in self.blocks])}{"total":>12s}'
+                f'\n{"Kinetic energy":30s}'
                 f'{" ".join([f"{i:9.4f}" for i in self.kinetic_contributions])}{kinetic_contribution:12.7f}\n'
                 f'{"External potential energy":30s}{" ".join([f"{i:9.4f}" for i in per_site_array["v_ext"]])}'
                 f'{v_ext_contribution:12.7f}\n{"On-site repulsion":30s}'
@@ -620,14 +604,12 @@ class Molecule:
         return y_ab, mol_full, (total_energy, kinetic_contribution, v_ext_contribution,
                                 u_contribution, 0), np.array([])
 
-    def clear_object(self, description=''):
+    def clear_object(self):
         """
         This method is used to clear all data that would mess with the self consistent loop without redoing calculation
         of the a_dagger_a. This enables us faster calculations
-        :param description:
         :return: None
         """
-        self.description = f"{datetime.now().strftime('%Y_%m_%d_%H_%M')}" + description
         self.u = np.array((), dtype=np.float64)
         self.t = np.array((), dtype=np.float64)
         self.v_ext = np.array((), dtype=np.float64)
@@ -696,29 +678,28 @@ class Molecule:
         """
         # region Starting approximation for v_Hxc and mu_imp_0
         if starting_approximation is None:  # Get some starting approximation for the optimization algorithm
-            starting_approximation = np.zeros(len(self.equiv_site_helper_list), float)
-            # self.equiv_site_helper_list can either be equiv_atom_list or equiv_atoms_in_block depending on imp size.
-            for group_key, group_tuple in enumerate(self.equiv_site_helper_list):
+            starting_approximation = np.zeros(len(self.equiv_atoms_in_block), float)
+            for group_key, group_tuple in enumerate(self.equiv_atoms_in_block):
                 group_element_site = group_tuple[0]
                 starting_approximation[group_key] = (self.v_ext[0] - self.v_ext[group_element_site]) * 0.5
-        elif len(starting_approximation) != len(self.equiv_site_helper_list):
+        elif len(starting_approximation) != len(self.equiv_atoms_in_block):
             raise Exception(f'Wrong length of the starting approximation: len(starting_approximation) != '
-                            f'len(eq_atom) ({len(starting_approximation)} != {len(self.equiv_site_helper_list) - 1}')
+                            f'len(eq_atom) ({len(starting_approximation)} != {len(self.equiv_atoms_in_block)}')
         general_logger.log(25, f'start of optimization of Hxc potentials, '
                                f'starting approximation = {starting_approximation}')
         # endregion
         self.optimize_progress_output = []
         self.optimize_progress_input = []
         # Optimization algorithm
-        model = scipy.optimize.root(self.cost_function_whole,starting_approximation, args=(self,), options={'maxfev': 100})
-        # region Additional tries if original method fails
+        model = scipy.optimize.root(self.cost_function_whole,starting_approximation, args=(self,),
+                                    options={'maxfev': 200})
+        # region Additional tries if the original method fails
         if not model.success:
             general_logger.warning(f'Model was not successful! message:\n{model}\nTrying with another solver')
-            model = scipy.optimize.root(self.cost_function_whole, model.x, args=(self,))  # another algorithm
+            model = scipy.optimize.minimize(self.cost_function_whole_minimize, model.x, args=(self,))  # minimization
         optimize_progress_output = np.array(self.optimize_progress_output)
         optimize_progress_input = np.array(self.optimize_progress_input)
-        if not model.success or np.sum(np.square(model.fun)) > 0.001:
-
+        if not model.success or np.sqrt(np.sum(np.square(model.fun))) > 0.001:
             weights = np.sqrt(np.sum(np.square(1 / (optimize_progress_output + 1e-5)), axis=1))
             mask = weights > np.percentile(weights, 95)
             final_approximation1 = np.average(optimize_progress_input[mask], axis=0, weights=weights[mask])
@@ -897,7 +878,8 @@ class Molecule:
         two_rdm_c = self.embedded_mol_dict[block_size].build_2rdm_fh_on_site_repulsion(two_electron_interactions)
 
         if self.v_term is not None:
-            v_term_repulsion_i = np.sum(v_tilde * v_tilde)
+            two_rdm_v_term = self.embedded_mol_dict[block_size].build_2rdm_fh_dipolar_interactions(v_tilde)
+            v_term_repulsion_i = np.sum(two_rdm_v_term * v_tilde)
             v_term_repulsion_i += np.sum(h_tilde_correction * one_rdm_c)
         else:
             v_term_repulsion_i = 0
@@ -924,11 +906,11 @@ class Molecule:
         h_tilde = change_indices(self.h, site_id)
         h_tilde = h_tilde.copy()
         h_tilde[[i for i in range(self.Ns) if i not in range(block_size)]] = 0
-        h_tilde = (p @ h_tilde_i @ p)[:block_size * 2, :block_size * 2]
+        h_tilde = (p @ h_tilde @ p)[:block_size * 2, :block_size * 2]
 
         self.kinetic_contributions[group_tuple] = np.sum(h_tilde * one_rdm)
         self.onsite_repulsion[group_tuple] = np.sum(two_electron_interactions * two_rdm) / 2
-        self.v_term_repulsion[site] = h_tilde_correction * one_rdm
+        self.v_term_repulsion[group_tuple] = np.sum(h_tilde_correction * one_rdm)
 
     def transform_g_term(self, p, site_id, only_one_site=None, bath_type='NIB', return_whole=False):
         """
@@ -1012,8 +994,8 @@ def generate_from_graph(sites, connections):
 
 
 class MoleculeChemistry(Molecule):
-    def __init__(self, site_number, electron_number, description=''):
-        super().__init__(site_number, electron_number, description)
+    def __init__(self, site_number, electron_number):
+        super().__init__(site_number, electron_number)
         self.ab_initio = True
 
     def add_parameters(self, g, h, equivalent_atoms=None, temp2=False, blocks=False):
@@ -1034,14 +1016,13 @@ class MoleculeChemistry(Molecule):
         if not np.allclose(self.h, self.h.T):
             raise Exception("t matrix should have been symmetric")
         if equivalent_atoms is None:
-            equiv_atom_group_list = cangen(self.h, np.round(np.sum(self.g, axis=(1, 2, 3)), 3))
+            equiv_atom_group_list = cangen(self.h, self.h.diagonal() * 20 + np.round(np.sum(self.g, axis=(1, 2, 3)), 3))
         else:
             equiv_atom_group_list = equivalent_atoms
         general_logger.info(f'Equivalent atoms: {equiv_atom_group_list}')
         self.equiv_atom_groups = []
         for index, item in enumerate(equiv_atom_group_list):
             self.equiv_atom_groups.append(tuple(item))
-        self.equiv_site_helper_list = self.equiv_atom_groups
         self.equiv_atom_groups_reverse = np.zeros(self.Ns, int)
         for group_id, atom_list in enumerate(self.equiv_atom_groups):
             for site_id in atom_list:

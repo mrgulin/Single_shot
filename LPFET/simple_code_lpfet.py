@@ -1,7 +1,7 @@
 import lpfet
 
 # Generate object
-mol1 = lpfet.Molecule(6, 6, 'chain1')
+mol1 = lpfet.Molecule(6, 6)
 
 # Generate arrays
 pmv = 0.5

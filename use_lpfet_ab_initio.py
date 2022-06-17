@@ -13,19 +13,19 @@ from ab_initio_reference.FCI import calculate_reference
 import quantnbody_class_new as qnb_class
 
 # list_theta = np.linspace(num=30, start=20. * np.pi / 180., stop=160. * np.pi / 180., endpoint=True)
-list_theta = np.linspace(0.25, 3, 10)
+list_theta = np.linspace(0.35, 3, 30)
 # list_theta = [1.2, 1.3]
 E_HF = []
 E_FCI = []
 E_lpfet = []
 E_FCI_QNB = []
 
-N_MO = 8
-N_elec = 8
-blocks = [[0, 1], [2, 3], [4, 5], [6, 7]]  # [[i] for i in range(8)]  # [[0, 1], [2, 3], [4, 5], [6, 7]]
-eq_sites = [[0, 7],[1, 6], [2, 5], [3, 4]]  # [[0, 7], [1, 6], [2, 5], [3, 4]]  # [[0, 6], [1, 7], [2, 4], [3, 5]]  #
-lpfet.ACTIVE_SPACE_CALCULATION = True
-name_system = 'H8_chain_cluster2222_non-int-bath_AS'
+# N_MO = 8
+# N_elec = 8
+# blocks = [[0, 1], [2, 3], [4, 5], [6, 7]]  # [[i] for i in range(8)]  # [[0, 1], [2, 3], [4, 5], [6, 7]]
+# eq_sites = [[0, 7],[1, 6], [2, 5], [3, 4]]  # [[0, 7], [1, 6], [2, 5], [3, 4]]  # [[0, 6], [1, 7], [2, 4], [3, 5]]  #
+# lpfet.ACTIVE_SPACE_CALCULATION = True
+# name_system = 'H8_chain_cluster2222_non-int-bath_AS'
 N_MO = 6
 N_elec = 6
 blocks = [[0, 1], [2, 3], [4, 5]]  # [[i] for i in range(8)]  # [[0, 1], [2, 3], [4, 5], [6, 7]]
@@ -40,7 +40,7 @@ calculate_qnb = False
 qnb_obj = qnb_class.HamiltonianV2(N_MO, N_elec)
 qnb_obj.build_operator_a_dagger_a()
 x = []
-my_mol = lpfet.MoleculeBlockChemistry(N_MO, N_elec)
+my_mol = lpfet.MoleculeChemistry(N_MO, N_elec)
 lpfet.stream_handler.setLevel(5)
 old_approximation = None
 progress = {'y_fci': [], 'y_lpfet': [], 'E_1rdm': [], 'E_2rdm': [], 'E_1rdm_lpfet': [], 'E_2rdm_lpfet': []}
@@ -113,39 +113,39 @@ for theta in tqdm(list_theta, file=sys.stdout):
     # wf_0[ta] = wf_full[:, 0]
     # print(qnb.tools.build_1rdm_spin_free(wf_0, qnb_obj.a_dagger_a))
 
-    my_mol.clear_object('')
+    my_mol.clear_object()
     my_mol.v_ext = np.zeros(N_MO)
     # my_mol.add_parameters(g, h, [[i] for i in range(N_MO)], 0)
-    my_mol.add_parameters(g, h, eq_sites)
+    my_mol.add_parameters(g, h, eq_sites, blocks=blocks)
 
     # my_mol.prepare_for_block([[i] for i in range(N_MO)])
     # my_mol.prepare_for_block([[2 * i, 2 * i + 1] for i in range(N_MO//2)])
-    my_mol.prepare_for_block(blocks)
     my_mol.ab_initio = True
     old_approximation = my_mol.find_solution_as_root(old_approximation)
     E_lpfet.append(my_mol.calculate_energy() + nuc_rep)
+    print(E_lpfet[-1], ret_dict['FCI'])
     progress['E_1rdm_lpfet'].append(my_mol.energy_contributions[1])
     progress['E_2rdm_lpfet'].append(my_mol.energy_contributions[3])
     progress['y_lpfet'].append(my_mol.y_a)
     first1 = True
-    fig, ax = plt.subplots(1, 1, figsize=(7, 4))
-    for jj in range(N_MO):
-        ax.plot(np.array(my_mol.density_progress)[:, jj], label='KS density', c='b')
-        first1 = False
-    # plt.plot(np.sum(my_mol.density_progress, axis=1), label='total number e KS', c='k')
-    inputs = np.array(my_mol.optimize_progress_input)
-    ax2 = ax.twinx()
-    ax2.plot(inputs[:, 0], label='impurity potential')
-    for jj in range(1, len(inputs[0])):
-        ax.plot(inputs[:, jj], c='g', label='$v^Hxc$')
-    cluster_densities = np.array(my_mol.density_progress)[:, [i[0] for i in my_mol.equiv_atoms_in_block]]
-    for jj in range(len(cluster_densities[0])):
-        ax.plot(cluster_densities[:, jj], c='r')
-    box = ax.get_position()
-    ax.set_position([box.x0, box.y0, box.width * 0.75, box.height])
-    ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-    plt.savefig(f'{name}progression_{theta:.3f}.png', dpi=150, bbox_inches='tight')
-    plt.show()
+    # fig, ax = plt.subplots(1, 1, figsize=(7, 4))
+    # for jj in range(N_MO):
+    #     ax.plot(np.array(my_mol.density_progress)[:, jj], label='KS density', c='b')
+    #     first1 = False
+    # # plt.plot(np.sum(my_mol.density_progress, axis=1), label='total number e KS', c='k')
+    # inputs = np.array(my_mol.optimize_progress_input)
+    # ax2 = ax.twinx()
+    # ax2.plot(inputs[:, 0], label='impurity potential')
+    # for jj in range(1, len(inputs[0])):
+    #     ax.plot(inputs[:, jj], c='g', label='$v^Hxc$')
+    # cluster_densities = np.array(my_mol.density_progress)[:, [i[0] for i in my_mol.equiv_atoms_in_block]]
+    # for jj in range(len(cluster_densities[0])):
+    #     ax.plot(cluster_densities[:, jj], c='r')
+    # box = ax.get_position()
+    # ax.set_position([box.x0, box.y0, box.width * 0.75, box.height])
+    # ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+    # plt.savefig(f'{name}progression_{theta:.3f}.png', dpi=150, bbox_inches='tight')
+    # plt.show()
     try:
         pass
     except BaseException as e:
@@ -165,7 +165,7 @@ fig, ax = plt.subplots(1, 1, figsize=(7, 4))
 plt.xlabel('$r$')
 plt.ylabel("$E$")
 ax.plot(x, E_lpfet, label='lpfet', linestyle='dashed')
-ax.plot(x, E_FCI, label='ref', c='k')
+ax.plot(x, E_FCI, label='ref', c='k', linewidth=0.75)
 ax.plot(x, E_HF, label='HF', linestyle='dashed')
 box = ax.get_position()
 ax.set_position([box.x0, box.y0, box.width * 0.75, box.height])
